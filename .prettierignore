@@ -1,0 +1,9 @@
+node_modules
+dist
+dist-ssr
+*.local
+.vscode
+.idea
+*.log
+package-lock.json
+
