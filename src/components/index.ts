@@ -4,5 +4,3 @@ export { default as CategoryFilter } from './CategoryFilter';
 export { default as MapView } from './MapView';
 export { default as DeviceMarker } from './DeviceMarker';
 export { default as BottomNavigation } from './BottomNavigation';
-export { AdminPage } from './AdminPage';
-

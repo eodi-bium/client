@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
-import { BottomNavigation, AdminPage } from './components';
+import { BottomNavigation } from './components';
 import { MapPage } from './pages/MapPage';
+import { AdminPage } from './pages/AdminPage';
+import { EventInfoPage } from './pages/EventInfoPage';
+import { MyPage } from './pages/MyPage';
 import type { NavItem } from './types';
 
 function App() {
@@ -49,18 +52,16 @@ function App() {
   };
 
   return (
-    <div className="w-full h-screen bg-white relative overflow-hidden">
+    <div className="w-full min-h-screen bg-white relative overflow-x-hidden overflow-y-auto">
       <Routes>
         <Route path="/" element={<MapPage />} />
         <Route path="/list" element={<div className="p-4">목록 페이지 (개발 예정)</div>} />
-        <Route path="/history" element={<div className="p-4">기록 페이지 (개발 예정)</div>} />
+        <Route path="/my" element={<MyPage />} />
         <Route path="/admin" element={<AdminPage />} />
+        <Route path="/event-info" element={<EventInfoPage />} />
       </Routes>
 
-      {/* 하단 네비게이션 - admin 페이지에서는 숨기기 */}
-      {location.pathname !== '/admin' && (
-        <BottomNavigation items={navItems} onItemClick={handleNavClick} />
-      )}
+      <BottomNavigation items={navItems} onItemClick={handleNavClick} />
     </div>
   );
 }

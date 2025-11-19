@@ -72,10 +72,6 @@ export const MapPage = () => {
     console.log('필터 클릭');
   };
 
-  const handleDeviceClick = (device: Device) => {
-    console.log('기기 클릭:', device);
-  };
-
   return (
     <>
       {/* 헤더 */}
@@ -98,10 +94,9 @@ export const MapPage = () => {
       </div>
 
       {/* 지도 영역 */}
-      <div className="pt-32 pb-20 h-full relative">
-        <MapView devices={filteredDevices} onDeviceClick={handleDeviceClick} />
+      <div className="relative pt-32 pb-20 min-h-screen">
+        <MapView />
       </div>
     </>
   );
 };
-
