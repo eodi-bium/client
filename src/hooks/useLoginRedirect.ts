@@ -11,7 +11,7 @@ export const useLoginRedirect = () => {
   useEffect(() => {
     const issueAccessToken = async () => {
       try {
-        const apiUrl = import.meta.env.VITE_API_URL;
+        const apiUrl = import.meta.env.VITE_BASE_URL;
         // axios는 기본적으로 JSON 응답을 처리하며, 상태 코드가 2xx 범위를 벗어나면 에러를 던집니다.
         // 쿠키(리프레시 토큰 등)를 포함하기 위해 withCredentials: true 설정 추가
         const response = await axios.post(`${apiUrl}/member/refresh`, null, {

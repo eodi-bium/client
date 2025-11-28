@@ -54,7 +54,7 @@ function App() {
 
   const handleNavClick = (itemId: string) => {
     if (itemId === 'login') {
-      const apiUrl = import.meta.env.VITE_API_URL;
+      const apiUrl = import.meta.env.VITE_BASE_URL;
       window.location.href = `${apiUrl}/oauth2/authorization/kakao`;
       return;
     }
