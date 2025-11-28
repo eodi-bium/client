@@ -5,7 +5,8 @@
   "description": "기기 찾기 애플리케이션",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --mode dev",
+    "remote": "vite --mode remote",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
