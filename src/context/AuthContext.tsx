@@ -54,12 +54,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           withCredentials: true,
         });
 
-        const authHeader = response.headers['authorization'];
-        if (authHeader) {
-          const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
-          login(token);
+        console.log(response);
+
+        // 백엔드 변경 사항 반영: Access Token이 응답 바디(Body)에 포함됨
+        const { accessToken } = response.data;
+
+        if (accessToken) {
+          login(accessToken);
         }
       } catch (error) {
+        console.error('Silent refresh failed:', error);
         // Refresh token이 없거나 만료된 경우 - 로그아웃 상태 유지
         logout();
       } finally {

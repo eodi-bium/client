@@ -18,17 +18,15 @@ export const useLoginRedirect = () => {
           withCredentials: true,
         });
 
-        // 헤더 이름은 소문자로 접근하는 것이 안전합니다.
-        const authHeader = response.headers['Authorization'];
+        // 백엔드 변경 사항 반영: Access Token이 응답 바디(Body)에 포함됨
+        const { accessToken } = response.data;
 
-        if (authHeader) {
-          const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
-
+        if (accessToken) {
           // Context를 통해 메모리에 토큰 저장 및 로그인 처리
-          login(token);
+          login(accessToken);
           navigate('/', { replace: true });
         } else {
-          console.error('Authorization header not found');
+          console.error('AccessToken not found in response body');
           navigate('/');
         }
       } catch (error) {
