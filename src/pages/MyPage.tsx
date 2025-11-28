@@ -189,4 +189,3 @@ export const MyPage = () => {
 };
 
 export default MyPage;
-
