@@ -49,7 +49,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     const silentRefresh = async () => {
       try {
-        const apiUrl = import.meta.env.VITE_API_URL;
+        const apiUrl = import.meta.env.VITE_BASE_URL;
         const response = await axios.post(`${apiUrl}/member/refresh`, null, {
           withCredentials: true,
         });
