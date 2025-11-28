@@ -148,7 +148,6 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
   const [myLocation, setMyLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [selectedPlace, setSelectedPlace] = useState<SelectedPlaceInfo | null>(null);
 
-  // ★ [핵심 1] activeCategory를 Ref에 담아 최신 상태 유지 (이벤트 리스너용)
   const activeCategoryRef = useRef(activeCategory);
 
   useEffect(() => {
@@ -172,14 +171,8 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
       const minInfo = Math.min(widthDist, heightDist);
       const km = (minInfo / 1000).toFixed(2);
 
-      // ★ [핵심 2] 드래그 시점의 '최신 카테고리'를 Ref에서 가져옴
       const currentCategory = activeCategoryRef.current || 'battery';
       const typeToSend = getRecyclingType(currentCategory);
-
-      // 디버깅용 로그: 드래그 시 어떤 카테고리로 요청하는지 확인
-      console.log(
-        `📡 데이터 요청: ${typeToSend} (중심: ${centerLat.toFixed(4)}, ${centerLng.toFixed(4)})`
-      );
 
       const requestBody = {
         recyclingType: typeToSend,
@@ -343,7 +336,6 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
 
     // 데이터가 있을 때 마커 생성
     if (places.length > 0) {
-      // ★ [핵심 3] 마커 아이콘 결정 (현재 activeCategory 기준)
       let iconUrl = MARKER_IMAGES.DEFAULT;
       if (activeCategory === 'battery') iconUrl = MARKER_IMAGES.BATTERY;
       else if (activeCategory === 'light') iconUrl = MARKER_IMAGES.LIGHT;
@@ -401,7 +393,6 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
 
           markersRef.current[i] = bouncingMarker;
           activeMarkerIndexRef.current = i;
-
           setSelectedPlace({
             ...place,
             distanceText: distText,
@@ -447,7 +438,16 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
-                  <h3 className="font-bold text-lg text-gray-800">{selectedPlace.name}</h3>
+                  <h3 className="font-bold text-lg text-gray-800">
+                    {selectedPlace.name ||
+                      (activeCategory === 'clothes'
+                        ? '의류 수거함'
+                        : activeCategory === 'light'
+                          ? '형광등 수거함'
+                          : activeCategory === 'battery'
+                            ? '배터리 수거함'
+                            : '수거함')}
+                  </h3>
                   {selectedPlace.distanceText && (
                     <span className="text-xs font-medium text-green-600 bg-green-100 px-2 py-0.5 rounded-full">
                       {selectedPlace.distanceText}
