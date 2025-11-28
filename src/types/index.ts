@@ -1,4 +1,4 @@
-export type DeviceType = 'battery' | 'light' | 'phone';
+export type DeviceType = 'battery' | 'light' | 'clothes';
 
 export interface Device {
   id: string;
@@ -15,7 +15,7 @@ export interface Category {
   id: string;
   label: string;
   icon: string;
-  type: DeviceType | 'all';
+  type: DeviceType;
 }
 
 export type NavItem = {
