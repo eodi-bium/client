@@ -1,4 +1,5 @@
 import { type FormEvent, useState } from 'react';
+import { useAxios } from '../hooks/useAxios';
 import { adminItemOptions } from '../data/admin';
 
 interface Item {
@@ -16,10 +17,7 @@ const AdminHeader = () => (
             <i className="ri-admin-line text-white text-xl"></i>
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-800">Points Management System</h1>
-            <p className="text-sm text-slate-500">
-              Manage community recycling rewards with confidence.
-            </p>
+            <h1 className="text-2xl font-bold text-slate-800">포인트 관리 시스템</h1>
           </div>
         </div>
       </div>
@@ -47,14 +45,11 @@ const CreditPointsForm = ({
   onSubmit,
 }: CreditPointsFormProps) => (
   <div className="rounded-2xl bg-white p-6 shadow-xl">
-    <h3 className="text-lg font-semibold text-slate-900">Credit points</h3>
-    <p className="mt-1 text-sm text-slate-500">
-      Register collected items, apply point rules, and keep the ledger consistent.
-    </p>
+    <h3 className="text-lg font-semibold text-slate-900">포인트 부여</h3>
 
     <form onSubmit={onSubmit} className="mt-6 space-y-5">
       <div className="space-y-2">
-        <label className="block text-sm font-semibold text-slate-700">User ID</label>
+        <label className="block text-sm font-semibold text-slate-700">사용자 아이디</label>
         <div className="relative">
           <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
             <i className="ri-user-line"></i>
@@ -72,7 +67,7 @@ const CreditPointsForm = ({
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <label className="block text-sm font-semibold text-slate-700">Items</label>
+          <label className="block text-sm font-semibold text-slate-700">버린 쓰레기</label>
           <button
             type="button"
             onClick={onAddItem}
@@ -140,6 +135,7 @@ const CreditPointsForm = ({
 );
 
 export const AdminPage = () => {
+  const axios = useAxios();
   const [userId, setUserId] = useState('');
   const [items, setItems] = useState<Item[]>([{ id: '1', type: '', quantity: 1 }]);
 
@@ -174,7 +170,7 @@ export const AdminPage = () => {
     setItems([{ id: '1', type: '', quantity: 1 }]);
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (!userId.trim()) {
@@ -188,9 +184,24 @@ export const AdminPage = () => {
       return;
     }
 
-    console.log('Points credited:', { userId, items });
-    alert('Points have been credited successfully!');
-    resetForm();
+    const payload = {
+      typeAndCounts: items.map((item) => ({
+        recyclingType: item.type,
+        count: Number(item.quantity),
+      })),
+      eventId: 105, // 요청하신 고정값
+      memberId: userId,
+    };
+
+    try {
+      await axios.post('/admin/draw/join', payload);
+
+      console.log('Points credited:', payload);
+      alert('포인트 적립 완료!');
+      resetForm();
+    } catch {
+      alert('포인트 적립 실패!');
+    }
   };
 
   return (
