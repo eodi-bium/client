@@ -46,6 +46,7 @@ export interface TmapMapInstance {
   destroy: () => void;
   resize: (width?: string | number, height?: string | number) => void;
   panTo: (latLng: TmapLatLng) => void;
+  setRotate: (angle: number) => void;
 }
 
 export interface TmapMarkerInstance {
@@ -58,6 +59,19 @@ export interface TmapPolylineInstance {
   setMap: (map: TmapMapInstance | null) => void;
 }
 
-// 전역 객체 선언은 d.ts 파일이나 사용하는 곳에서 선언해도 되지만, 
-// 편의상 MapView나 main.d.ts에서 관리하는 것이 일반적입니다. 
-// 여기서는 MapView에서 import해서 쓸 수 있도록 인터페이스만 정의합니다.
+export interface RouteFeature {
+  type: string;
+  geometry: {
+    type: string;
+    coordinates: number[] | number[][];
+  };
+  properties: {
+    index: number;
+    name: string;
+    description: string; // "100m 앞 우회전" 같은 안내 문구
+    turnType?: number;   // 회전 타입 (12: 우회전, 13: 좌회전 등)
+    totalDistance?: number;
+    totalTime?: number;
+    // 필요한 속성 추가
+  };
+}
