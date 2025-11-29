@@ -43,7 +43,10 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
   const [isTracking, setIsTracking] = useState(true);
 
   const activeCategoryRef = useRef(activeCategory);
-
+  const selectedPlaceRef = useRef<SelectedPlaceInfo | null>(null);
+  useEffect(() => {
+    selectedPlaceRef.current = selectedPlace;
+  }, [selectedPlace]);
   useEffect(() => {
     activeCategoryRef.current = activeCategory;
   }, [activeCategory]);
@@ -179,6 +182,9 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
         mapInstanceRef.current = map;
 
         const updateMapData = () => {
+          if (selectedPlaceRef.current) {
+            return;
+          }
           if (mapInstanceRef.current) fetchPlaces(mapInstanceRef.current);
         };
 
@@ -207,7 +213,13 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
       if (mapInstanceRef.current?.destroy) mapInstanceRef.current.destroy();
     };
   }, []);
-
+  useEffect(() => {
+    // 팝업이 닫히면(null이 되면) 그 시점의 지도 중심으로 데이터 한 번 갱신해주는 게 좋음
+    if (!selectedPlace && mapInstanceRef.current) {
+      // console.log('🔓 팝업 닫힘 -> 데이터 갱신 재개');
+      fetchPlaces(mapInstanceRef.current);
+    }
+  }, [selectedPlace, fetchPlaces]);
   // [Resize]
   useEffect(() => {
     const handleResize = () => {
@@ -296,15 +308,16 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
 
       const createMarker = (i: number, isBouncing: boolean) => {
         const place = places[i];
+        const aniType = isBouncing
+          ? window.Tmapv2.MarkerOptions.ANIMATE_BOUNCE
+          : window.Tmapv2.MarkerOptions.ANIMATE_BALLOON;
         const marker = new window.Tmapv2.Marker({
           position: new window.Tmapv2.LatLng(place.latitude, place.longitude),
           map: mapInstanceRef.current!,
           title: place.name,
           icon: iconUrl,
           iconSize: new window.Tmapv2.Size(32, 32),
-          animation: isBouncing
-            ? window.Tmapv2.MarkerOptions.ANIMATE_BOUNCE
-            : window.Tmapv2.MarkerOptions.ANIMATE_BALLOON,
+          animation: aniType,
           animationLength: 300,
         });
 
@@ -336,7 +349,7 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
               place.latitude,
               place.longitude
             );
-            distText = `${d}m`;
+            distText = `${(d / 1000).toFixed(2)}km`;
           }
 
           setSelectedPlace({ ...place, distanceText: distText });
@@ -356,7 +369,7 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
         if (index >= places.length) return;
         markersRef.current.push(createMarker(index, false));
         index++;
-        timeoutId = setTimeout(addNextMarker, 50);
+        timeoutId = setTimeout(addNextMarker, 1);
       };
       addNextMarker();
 
