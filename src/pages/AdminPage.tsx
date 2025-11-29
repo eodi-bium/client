@@ -194,7 +194,7 @@ export const AdminPage = () => {
     };
 
     try {
-      await axios.post('/draw-point/join', payload);
+      await axios.post('/admin/draw/join', payload);
 
       console.log('Points credited:', payload);
       alert('포인트 적립 완료!');
