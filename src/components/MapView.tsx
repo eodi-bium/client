@@ -115,7 +115,6 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
     }
   }, []);
 
-  // [기능] 초기화
   const resetNavigation = () => {
     setSelectedPlace(null);
     setRouteInfo(null);
@@ -247,7 +246,9 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
         map.addListener('dragstart', () => setIsTracking(false));
         map.addListener('dragend', updateMapData);
         map.addListener('zoom_changed', updateMapData);
-        map.addListener('click', () => {});
+        map.addListener('click', () => {
+          // 지도 클릭 시
+        });
       }
     };
     loadTmapScript().then(initializeMap);
@@ -292,6 +293,7 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
     return () => window.removeEventListener('deviceorientation', handleOrientation);
   }, [isCompassMode]);
 
+  // [Geolocation & Tracking & TBT]
   useEffect(() => {
     if (!navigator.geolocation) return;
     const watchId = navigator.geolocation.watchPosition(
@@ -303,15 +305,23 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
         if (mapInstanceRef.current && window.Tmapv2) {
           const myLatLng = new window.Tmapv2.LatLng(lat, lng);
 
+          // ★ [수정] 내 위치 마커 업데이트 (길찾기 중이면 START 아이콘)
+          // routeInfo가 있으면 START 아이콘, 없으면 MY_LOCATION 아이콘
+          const myIcon = routeInfo ? MARKER_IMAGES.START : MARKER_IMAGES.MY_LOCATION;
+
           if (myLocationMarkerRef.current) {
             myLocationMarkerRef.current.setPosition(myLatLng);
+            // setIcon 메서드가 있다면 아이콘 변경 (Tmap API 확인 필요, 없으면 재생성)
+            // 보통 setIcon이 지원되지 않을 수 있으므로, 상태가 바뀔 때 재생성하는 것이 안전
+            // 하지만 여기서는 편의상 매번 재생성하지 않고 렌더링 사이클에 맡김
+            // (아래 useEffect에서 routeInfo 변경 시 마커 전체를 다시 그림)
           } else {
             myLocationMarkerRef.current = new window.Tmapv2.Marker({
               position: myLatLng,
               map: mapInstanceRef.current,
               title: '내 위치',
-              icon: MARKER_IMAGES.MY_LOCATION,
-              iconSize: new window.Tmapv2.Size(24, 24),
+              icon: myIcon,
+              iconSize: new window.Tmapv2.Size(32, 32),
             });
             mapInstanceRef.current.setCenter(myLatLng);
             fetchPlaces(mapInstanceRef.current);
@@ -321,6 +331,7 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
             mapInstanceRef.current.setCenter(myLatLng);
           }
 
+          // 도착 감지
           if (routeInfo && selectedPlace && !isArrivalProcessRef.current) {
             const distToDest = getDistanceFromLatLonInMeters(
               lat,
@@ -342,6 +353,7 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
               return;
             }
 
+            // TBT
             let nearestPoint: RouteFeature | null = null;
             let minDist = 100000;
             routePointsRef.current.forEach((point) => {
@@ -377,6 +389,30 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
     }
   }, [activeCategory]);
 
+  // ★ [핵심] 내 위치 마커 아이콘 변경 감지 (routeInfo 변경 시)
+  useEffect(() => {
+    if (myLocationMarkerRef.current && mapInstanceRef.current && window.Tmapv2) {
+      const myIcon = routeInfo ? MARKER_IMAGES.START : MARKER_IMAGES.MY_LOCATION;
+      // 기존 마커 지우고 새로 생성 (setIcon이 없을 경우 대비)
+      myLocationMarkerRef.current.setMap(null);
+
+      const pos = myLocationRef.current
+        ? new window.Tmapv2.LatLng(myLocationRef.current.lat, myLocationRef.current.lng)
+        : mapInstanceRef.current.getCenter();
+
+      myLocationMarkerRef.current = new window.Tmapv2.Marker({
+        position: pos,
+        map: mapInstanceRef.current,
+        title: '내 위치',
+        icon: myIcon,
+        iconSize: new window.Tmapv2.Size(32, 32),
+      });
+    }
+  }, [routeInfo]); // 길찾기 시작/종료 시 실행
+
+  // ===================================================
+  // [Marker Rendering]
+  // ===================================================
   useEffect(() => {
     if (!mapInstanceRef.current || !window.Tmapv2) return;
 
@@ -384,39 +420,44 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
     markersRef.current = [];
     activeMarkerIndexRef.current = null;
 
+    // 렌더링 대상 결정
     let placesToRender = places;
     if (routeInfo && selectedPlace) {
       placesToRender = [selectedPlace];
     }
 
     if (placesToRender.length > 0) {
-      let iconUrl = MARKER_IMAGES.DEFAULT;
-      if (activeCategory === 'battery') iconUrl = MARKER_IMAGES.BATTERY;
-      else if (activeCategory === 'light') iconUrl = MARKER_IMAGES.LIGHT;
-      else if (activeCategory === 'clothes') iconUrl = MARKER_IMAGES.CLOTHES;
+      // 기본 아이콘 결정
+      let defaultIcon = MARKER_IMAGES.DEFAULT;
+      if (activeCategory === 'battery') defaultIcon = MARKER_IMAGES.BATTERY;
+      else if (activeCategory === 'light') defaultIcon = MARKER_IMAGES.LIGHT;
+      else if (activeCategory === 'clothes') defaultIcon = MARKER_IMAGES.CLOTHES;
+
+      // ★ [수정] 길찾기 중이면 목적지 아이콘(END) 사용
+      let iconUrl = defaultIcon;
+      if (routeInfo) {
+        iconUrl = MARKER_IMAGES.END;
+      }
 
       let index = 0;
       let timeoutId: NodeJS.Timeout;
 
       const createMarkerInstance = (index: number, place: Place, isBouncing: boolean) => {
-        let aniType = window.Tmapv2.MarkerOptions.ANIMATE_BALLOON;
-
-        if (isBouncing) {
-          aniType = window.Tmapv2.MarkerOptions.ANIMATE_BOUNCE;
-        }
+        let aniType = routeInfo ? null : window.Tmapv2.MarkerOptions.ANIMATE_BALLOON;
+        if (isBouncing) aniType = window.Tmapv2.MarkerOptions.ANIMATE_BOUNCE;
 
         const marker = new window.Tmapv2.Marker({
           position: new window.Tmapv2.LatLng(place.latitude, place.longitude),
           map: mapInstanceRef.current!,
           title: place.name,
-          icon: iconUrl,
+          icon: iconUrl, // ★ START/END or Category Icon
           iconSize: new window.Tmapv2.Size(32, 32),
           animation: aniType,
-          animationLength: 100,
+          animationLength: 300,
         });
 
         marker.addListener('click', () => {
-          if (routeInfo) return;
+          if (routeInfo) return; // 길찾기 중 클릭 무시
 
           if (!places || places.length === 0) return;
 
@@ -424,7 +465,6 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
           if (prevIdx !== null && prevIdx !== index && markersRef.current[prevIdx]) {
             const prevMarker = markersRef.current[prevIdx];
             prevMarker.setMap(null);
-
             if (places[prevIdx]) {
               const restored = createMarkerInstance(prevIdx, places[prevIdx], false);
               markersRef.current[prevIdx] = restored;
@@ -466,7 +506,7 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
 
       return () => clearTimeout(timeoutId);
     }
-  }, [places, activeCategory, routeInfo]);
+  }, [places, activeCategory, routeInfo]); // routeInfo 변경 시 아이콘도 바뀜
 
   const handleCurrentLocationClick = () => {
     if (myLocation && mapInstanceRef.current) {
