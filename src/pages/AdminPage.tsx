@@ -49,7 +49,7 @@ const CreditPointsForm = ({
 
     <form onSubmit={onSubmit} className="mt-6 space-y-5">
       <div className="space-y-2">
-        <label className="block text-sm font-semibold text-slate-700">User ID</label>
+        <label className="block text-sm font-semibold text-slate-700">사용자 아이디</label>
         <div className="relative">
           <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
             <i className="ri-user-line"></i>
@@ -67,7 +67,7 @@ const CreditPointsForm = ({
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <label className="block text-sm font-semibold text-slate-700">Items</label>
+          <label className="block text-sm font-semibold text-slate-700">버린 쓰레기</label>
           <button
             type="button"
             onClick={onAddItem}
