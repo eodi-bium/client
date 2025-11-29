@@ -197,10 +197,10 @@ export const AdminPage = () => {
       await axios.post('/draw-point/join', payload);
 
       console.log('Points credited:', payload);
-      alert('Points have been credited successfully!');
+      alert('포인트 적립 완료!');
       resetForm();
-    } catch (error) {
-      console.error('Failed to credit points:', error);
+    } catch {
+      alert('포인트 적립 실패!');
     }
   };
 
