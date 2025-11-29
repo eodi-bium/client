@@ -34,14 +34,11 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
   const markersRef = useRef<TmapMarkerInstance[]>([]);
   const myLocationMarkerRef = useRef<TmapMarkerInstance | null>(null);
 
-  // ★ [수정] 현재 선택된(튀고 있는) 마커 객체를 직접 저장 (인덱스보다 안전)
-  const activeMarkerRef = useRef<TmapMarkerInstance | null>(null);
+  const activeMarkerIndexRef = useRef<number | null>(null);
 
   const resultRoutePolylineRef = useRef<TmapPolylineInstance | null>(null);
   const routePointsRef = useRef<RouteFeature[]>([]);
   const lastSpokenTextRef = useRef<string>('');
-
-  // 도착 처리 중복 방지
   const isArrivalProcessRef = useRef(false);
 
   const [places, setPlaces] = useState<Place[]>([]);
@@ -56,19 +53,21 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
 
   const activeCategoryRef = useRef(activeCategory);
   const selectedPlaceRef = useRef<SelectedPlaceInfo | null>(null);
+  const myLocationRef = useRef<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
     selectedPlaceRef.current = selectedPlace;
   }, [selectedPlace]);
-
   useEffect(() => {
     activeCategoryRef.current = activeCategory;
   }, [activeCategory]);
+  useEffect(() => {
+    myLocationRef.current = myLocation;
+  }, [myLocation]);
 
   const speak = (text: string) => {
     if (!window.speechSynthesis) return;
     if (lastSpokenTextRef.current === text) return;
-
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'ko-KR';
@@ -115,6 +114,34 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
       console.error('데이터 로드 실패:', error);
     }
   }, []);
+
+  // [기능] 초기화
+  const resetNavigation = () => {
+    setSelectedPlace(null);
+    setRouteInfo(null);
+    setTbtInstruction(null);
+    routePointsRef.current = [];
+    setIsCompassMode(false);
+    isArrivalProcessRef.current = false;
+    activeMarkerIndexRef.current = null;
+
+    if (resultRoutePolylineRef.current) {
+      resultRoutePolylineRef.current.setMap(null);
+      resultRoutePolylineRef.current = null;
+    }
+
+    if (mapInstanceRef.current && myLocationRef.current) {
+      // ★ [수정] setRotate가 존재하는지 확인 후 실행 (에러 방지)
+      if (typeof mapInstanceRef.current.setRotate === 'function') {
+        mapInstanceRef.current.setRotate(0);
+      }
+
+      mapInstanceRef.current.setCenter(
+        new window.Tmapv2.LatLng(myLocationRef.current.lat, myLocationRef.current.lng)
+      );
+      fetchPlaces(mapInstanceRef.current);
+    }
+  };
 
   const findPath = async () => {
     if (!myLocation || !selectedPlace || !mapInstanceRef.current) {
@@ -188,7 +215,7 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
         setIsTracking(true);
         setIsCompassMode(true);
 
-        const startMsg = `경로 안내를 시작합니다. 약 ${Math.ceil(properties.totalTime / 60)}분 소요됩니다.`;
+        const startMsg = `안내를 시작합니다. 약 ${Math.ceil(properties.totalTime / 60)}분 소요됩니다.`;
         setTbtInstruction(startMsg);
         speak(startMsg);
       }
@@ -218,23 +245,11 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
           if (mapInstanceRef.current) fetchPlaces(mapInstanceRef.current);
         };
 
-        map.addListener('dragstart', () => {
-          setIsTracking(false);
-        });
-
+        map.addListener('dragstart', () => setIsTracking(false));
         map.addListener('dragend', updateMapData);
         map.addListener('zoom_changed', updateMapData);
-
         map.addListener('click', () => {
-          setSelectedPlace(null);
-          // 팝업 닫을 때 튀던 마커 멈추기 (선택 사항)
-          if (activeMarkerRef.current) {
-            activeMarkerRef.current.setMap(null);
-            // 여기서 원래 마커로 복구하는 로직이 있으면 좋지만,
-            // 단순히 null로 만들고 다음 렌더링을 기다리거나,
-            // 복잡성을 줄이기 위해 그냥 둬도 무방 (데이터 갱신 시 다시 그려짐)
-            activeMarkerRef.current = null;
-          }
+          // 지도 클릭 이벤트
         });
       }
     };
@@ -244,12 +259,6 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
       if (mapInstanceRef.current?.destroy) mapInstanceRef.current.destroy();
     };
   }, []);
-
-  useEffect(() => {
-    if (!selectedPlace && mapInstanceRef.current) {
-      fetchPlaces(mapInstanceRef.current);
-    }
-  }, [selectedPlace, fetchPlaces]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -264,11 +273,14 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // [Compass Mode]
   useEffect(() => {
     const handleOrientation = (event: DeviceOrientationEvent) => {
       if (!isCompassMode || !mapInstanceRef.current) return;
       const heading = event.alpha;
-      if (heading !== null) {
+
+      // ★ [수정] setRotate가 존재하는지 확인 후 실행
+      if (heading !== null && typeof mapInstanceRef.current.setRotate === 'function') {
         mapInstanceRef.current.setRotate(360 - heading);
       }
     };
@@ -277,12 +289,16 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
       window.addEventListener('deviceorientation', handleOrientation);
     } else {
       window.removeEventListener('deviceorientation', handleOrientation);
-      if (mapInstanceRef.current) mapInstanceRef.current.setRotate(0);
+      // ★ [수정] setRotate가 존재하는지 확인 후 실행
+      if (mapInstanceRef.current && typeof mapInstanceRef.current.setRotate === 'function') {
+        mapInstanceRef.current.setRotate(0);
+      }
     }
 
     return () => window.removeEventListener('deviceorientation', handleOrientation);
   }, [isCompassMode]);
 
+  // [Tracking & Arrival]
   useEffect(() => {
     if (!navigator.geolocation) return;
     const watchId = navigator.geolocation.watchPosition(
@@ -312,13 +328,8 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
             mapInstanceRef.current.setCenter(myLatLng);
           }
 
-          // ★ [도착 감지 로직]
-          if (
-            routeInfo &&
-            selectedPlace &&
-            routePointsRef.current.length > 0 &&
-            !isArrivalProcessRef.current
-          ) {
+          // 도착 감지
+          if (routeInfo && selectedPlace && !isArrivalProcessRef.current) {
             const distToDest = getDistanceFromLatLonInMeters(
               lat,
               lng,
@@ -327,20 +338,19 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
             );
 
             if (distToDest < 20) {
-              isArrivalProcessRef.current = true; // 중복 실행 방지
-              speak('목적지에 도착했습니다. 안내를 종료합니다.');
+              isArrivalProcessRef.current = true;
+              speak('목적지에 도착했습니다.');
 
-              // ★ [수정 2] 도착 후 페이지 새로고침으로 깔끔하게 초기화
-              // setTimeout을 써서 음성이 나온 뒤 알림창이 뜨게 함
               setTimeout(() => {
-                alert('목적지에 도착했습니다! 🎉 초기 화면으로 돌아갑니다.');
-                window.location.reload(); // ★ 강력한 초기화 (흰 화면 버그 해결)
+                const confirmed = window.confirm('목적지에 도착했습니다! 안내를 종료합니다.');
+                if (confirmed || !confirmed) {
+                  window.location.reload();
+                }
               }, 500);
-
               return;
             }
 
-            // TBT 안내 로직 (기존 유지)
+            // TBT
             let nearestPoint: RouteFeature | null = null;
             let minDist = 100000;
             routePointsRef.current.forEach((point) => {
@@ -372,27 +382,25 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
 
   useEffect(() => {
     if (mapInstanceRef.current) {
-      setSelectedPlace(null);
-      setRouteInfo(null);
-      setTbtInstruction(null);
-      if (resultRoutePolylineRef.current) {
-        resultRoutePolylineRef.current.setMap(null);
-        resultRoutePolylineRef.current = null;
-      }
-      fetchPlaces(mapInstanceRef.current);
+      resetNavigation();
     }
-  }, [activeCategory, fetchPlaces]);
+  }, [activeCategory]);
 
-  // ★ [수정 1] 마커 렌더링 로직 개선 (풍선 효과 & 튀기기 동시 지원)
+  // [Marker Rendering]
   useEffect(() => {
     if (!mapInstanceRef.current || !window.Tmapv2) return;
 
-    // 기존 마커 싹 지우기
     markersRef.current.forEach((m) => m.setMap(null));
     markersRef.current = [];
-    activeMarkerRef.current = null; // 활성 마커 초기화
+    activeMarkerIndexRef.current = null;
 
-    if (places.length > 0) {
+    // 렌더링 대상 결정
+    let placesToRender = places;
+    if (routeInfo && selectedPlace) {
+      placesToRender = [selectedPlace];
+    }
+
+    if (placesToRender.length > 0) {
       let iconUrl = MARKER_IMAGES.DEFAULT;
       if (activeCategory === 'battery') iconUrl = MARKER_IMAGES.BATTERY;
       else if (activeCategory === 'light') iconUrl = MARKER_IMAGES.LIGHT;
@@ -401,63 +409,49 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
       let index = 0;
       let timeoutId: NodeJS.Timeout;
 
-      // 마커 생성 함수 (일반 마커용)
-      const createNormalMarker = (place: Place) => {
+      const createMarkerInstance = (index: number, place: Place, isBouncing: boolean) => {
+        let aniType = window.Tmapv2.MarkerOptions.ANIMATE_BALLOON;
+
+        if (isBouncing) {
+          aniType = window.Tmapv2.MarkerOptions.ANIMATE_BOUNCE;
+        }
+
         const marker = new window.Tmapv2.Marker({
           position: new window.Tmapv2.LatLng(place.latitude, place.longitude),
           map: mapInstanceRef.current!,
           title: place.name,
           icon: iconUrl,
           iconSize: new window.Tmapv2.Size(32, 32),
-          // ★ 초기 등장: 풍선 효과
-          animation: window.Tmapv2.MarkerOptions.ANIMATE_BALLOON,
+          animation: aniType,
+          animationLength: 500,
         });
 
-        // 클릭 이벤트 등록
         marker.addListener('click', () => {
-          // 1. 이전에 튀고 있던 마커가 있으면 -> 지우고 일반 마커로 복구
-          if (activeMarkerRef.current) {
-            const oldMarker = activeMarkerRef.current;
-            const oldPos = oldMarker.getPosition(); // 위치 정보 가져오기
-            oldMarker.setMap(null); // 튀던 놈 삭제
+          if (routeInfo) return;
 
-            // 그 자리에 일반 마커(애니메이션 없이) 다시 생성
-            const restoredMarker = new window.Tmapv2.Marker({
-              position: oldPos,
-              map: mapInstanceRef.current!,
-              icon: iconUrl, // 같은 아이콘
-              iconSize: new window.Tmapv2.Size(32, 32),
-              animation: null, // 조용히 등장
-            });
-            // 복구된 마커에도 클릭 이벤트 다시 달아야 함 (재귀적 구조 필요하지만 여기선 생략하거나 간단히 처리)
-            // *완벽한 복구를 위해선 createNormalMarker를 재호출해야 하는데,
-            //  activeMarkerRef에 원본 place 데이터를 저장해두는 방식이 좋음.
-            //  여기선 시각적 복구만 처리.
+          if (!places || places.length === 0) return;
+
+          const prevIdx = activeMarkerIndexRef.current;
+          if (prevIdx !== null && prevIdx !== index && markersRef.current[prevIdx]) {
+            const prevMarker = markersRef.current[prevIdx];
+            prevMarker.setMap(null);
+
+            if (places[prevIdx]) {
+              const restored = createMarkerInstance(prevIdx, places[prevIdx], false);
+              markersRef.current[prevIdx] = restored;
+            }
           }
 
-          // 2. 현재 클릭한 마커 -> 지우고 튀는 마커로 교체
           marker.setMap(null);
+          const bouncing = createMarkerInstance(index, place, true);
+          markersRef.current[index] = bouncing;
+          activeMarkerIndexRef.current = index;
 
-          const bouncingMarker = new window.Tmapv2.Marker({
-            position: new window.Tmapv2.LatLng(place.latitude, place.longitude),
-            map: mapInstanceRef.current!,
-            title: place.name,
-            icon: iconUrl,
-            iconSize: new window.Tmapv2.Size(32, 32),
-            animation: window.Tmapv2.MarkerOptions.ANIMATE_BOUNCE, // ★ 튀기기
-            animationLength: 500, // 필수
-          });
-
-          bouncingMarker.addListener('click', () => {}); // 클릭 시 아무것도 안 함 (이미 튀는 중)
-
-          activeMarkerRef.current = bouncingMarker; // 현재 튀는 마커로 등록
-
-          // 팝업 정보 업데이트
           let distText = '';
-          if (myLocation) {
+          if (myLocationRef.current) {
             const d = getDistanceFromLatLonInMeters(
-              myLocation.lat,
-              myLocation.lng,
+              myLocationRef.current.lat,
+              myLocationRef.current.lng,
               place.latitude,
               place.longitude
             );
@@ -470,20 +464,20 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
         return marker;
       };
 
-      const addNextMarker = () => {
-        if (index >= places.length) return;
-        const place = places[index];
-        const marker = createNormalMarker(place);
-        markersRef.current.push(marker);
+      const addNext = () => {
+        if (index >= placesToRender.length) return;
+        if (placesToRender[index]) {
+          const m = createMarkerInstance(index, placesToRender[index], false);
+          markersRef.current.push(m);
+        }
         index++;
-        timeoutId = setTimeout(addNextMarker, 50); // 순차적 등장 효과
+        timeoutId = setTimeout(addNext, 30);
       };
-
-      addNextMarker();
+      addNext();
 
       return () => clearTimeout(timeoutId);
     }
-  }, [places, myLocation, activeCategory]);
+  }, [places, activeCategory, routeInfo]);
 
   const handleCurrentLocationClick = () => {
     if (myLocation && mapInstanceRef.current) {
@@ -510,7 +504,7 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
         className={`absolute bottom-6 right-4 z-40 bg-white p-3 rounded-full shadow-lg border transition-colors ${
           isTracking ? 'text-blue-500 border-blue-500' : 'text-gray-600 border-gray-200'
         }`}
-        style={{ bottom: selectedPlace ? '180px' : '24px' }}
+        style={{ bottom: selectedPlace ? '240px' : '80px' }}
       >
         <i
           className={`fas fa-crosshairs text-xl ${isCompassMode ? 'animate-pulse text-red-500' : ''}`}
@@ -521,9 +515,7 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
         <MapPopup
           selectedPlace={selectedPlace}
           routeInfo={routeInfo}
-          onClose={() => {
-            setSelectedPlace(null);
-          }}
+          onClose={resetNavigation}
           onFindPath={findPath}
         />
       )}
