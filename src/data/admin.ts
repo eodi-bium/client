@@ -1,7 +1,8 @@
 export const adminItemOptions = [
-  { value: 'battery', label: 'Battery' },
-  { value: 'fluorescent', label: 'Fluorescent Lamp' },
-  { value: 'small-appliance', label: 'Small Appliance' },
+  { value: 'BATTERY', label: '폐건전지' },
+  { value: 'LIGHT', label: '폐형광등' },
+  { value: 'PHONE', label: '폐휴대폰' },
+  { value: 'CLOTHES', label: '의류' },
 ] as const;
 
 export const adminStatCards = [
