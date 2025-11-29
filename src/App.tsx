@@ -20,6 +20,7 @@ function App() {
     if (path === '/') return 'map';
     if (path === '/admin') return 'admin';
     if (path === '/my') return 'my';
+    if (path === '/event-info') return 'event';
     return 'map';
   }, [location.pathname]);
 
@@ -49,6 +50,7 @@ function App() {
   // 네비게이션 아이템
   const navItems: NavItem[] = [
     { id: 'map', label: '지도', icon: 'fas fa-map-marker-alt', active: activeNav === 'map' },
+    { id: 'event', label: '행사', icon: 'ri-calendar-event-line', active: activeNav === 'event' },
     getAuthNavItem(),
   ];
 
@@ -65,6 +67,9 @@ function App() {
     switch (itemId) {
       case 'map':
         navigate('/');
+        break;
+      case 'event':
+        navigate('/event-info');
         break;
       case 'admin':
         navigate('/admin');
