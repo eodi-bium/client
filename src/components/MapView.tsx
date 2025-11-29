@@ -367,7 +367,7 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
         }
       },
       (err) => console.error(err),
-      { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
     );
     return () => navigator.geolocation.clearWatch(watchId);
   }, [fetchPlaces, isTracking, routeInfo, selectedPlace, tbtInstruction]);
