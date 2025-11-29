@@ -16,7 +16,7 @@ export const MapPopup: React.FC<MapPopupProps> = ({
   onFindPath,
 }) => {
   return (
-    <div className="absolute bottom-6 left-4 right-4 z-50 animate-slide-up">
+    <div className="absolute bottom-[80px] left-4 right-4 z-50 animate-slide-up">
       <div className="bg-white rounded-xl shadow-2xl p-5 border border-gray-100 relative">
         <button
           onClick={onClose}
@@ -24,7 +24,6 @@ export const MapPopup: React.FC<MapPopupProps> = ({
         >
           <i className="fas fa-times text-lg"></i>
         </button>
-
         <div className="flex items-start gap-4">
           <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center flex-shrink-0">
             <i className="fas fa-map-marker-alt text-green-600 text-xl"></i>

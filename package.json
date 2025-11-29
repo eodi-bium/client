@@ -7,9 +7,9 @@
   "scripts": {
     "dev": "vite --mode dev",
     "remote": "vite --mode remote",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build --mode prod",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview --mode prod"
   },
   "dependencies": {
     "react": "^19.1.1",

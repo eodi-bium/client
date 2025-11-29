@@ -131,7 +131,6 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
     }
 
     if (mapInstanceRef.current && myLocationRef.current) {
-      // ★ [수정] setRotate가 존재하는지 확인 후 실행 (에러 방지)
       if (typeof mapInstanceRef.current.setRotate === 'function') {
         mapInstanceRef.current.setRotate(0);
       }
@@ -248,9 +247,7 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
         map.addListener('dragstart', () => setIsTracking(false));
         map.addListener('dragend', updateMapData);
         map.addListener('zoom_changed', updateMapData);
-        map.addListener('click', () => {
-          // 지도 클릭 이벤트
-        });
+        map.addListener('click', () => {});
       }
     };
     loadTmapScript().then(initializeMap);
@@ -273,13 +270,11 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // [Compass Mode]
   useEffect(() => {
     const handleOrientation = (event: DeviceOrientationEvent) => {
       if (!isCompassMode || !mapInstanceRef.current) return;
       const heading = event.alpha;
 
-      // ★ [수정] setRotate가 존재하는지 확인 후 실행
       if (heading !== null && typeof mapInstanceRef.current.setRotate === 'function') {
         mapInstanceRef.current.setRotate(360 - heading);
       }
@@ -289,7 +284,6 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
       window.addEventListener('deviceorientation', handleOrientation);
     } else {
       window.removeEventListener('deviceorientation', handleOrientation);
-      // ★ [수정] setRotate가 존재하는지 확인 후 실행
       if (mapInstanceRef.current && typeof mapInstanceRef.current.setRotate === 'function') {
         mapInstanceRef.current.setRotate(0);
       }
@@ -298,7 +292,6 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
     return () => window.removeEventListener('deviceorientation', handleOrientation);
   }, [isCompassMode]);
 
-  // [Tracking & Arrival]
   useEffect(() => {
     if (!navigator.geolocation) return;
     const watchId = navigator.geolocation.watchPosition(
@@ -328,7 +321,6 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
             mapInstanceRef.current.setCenter(myLatLng);
           }
 
-          // 도착 감지
           if (routeInfo && selectedPlace && !isArrivalProcessRef.current) {
             const distToDest = getDistanceFromLatLonInMeters(
               lat,
@@ -350,7 +342,6 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
               return;
             }
 
-            // TBT
             let nearestPoint: RouteFeature | null = null;
             let minDist = 100000;
             routePointsRef.current.forEach((point) => {
@@ -386,7 +377,6 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
     }
   }, [activeCategory]);
 
-  // [Marker Rendering]
   useEffect(() => {
     if (!mapInstanceRef.current || !window.Tmapv2) return;
 
@@ -394,7 +384,6 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
     markersRef.current = [];
     activeMarkerIndexRef.current = null;
 
-    // 렌더링 대상 결정
     let placesToRender = places;
     if (routeInfo && selectedPlace) {
       placesToRender = [selectedPlace];
@@ -423,7 +412,7 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
           icon: iconUrl,
           iconSize: new window.Tmapv2.Size(32, 32),
           animation: aniType,
-          animationLength: 500,
+          animationLength: 100,
         });
 
         marker.addListener('click', () => {
