@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { useAxios } from '../hooks/useAxios';
 
 type PointStat = {
   id: string;
@@ -21,6 +21,7 @@ type EventDetail = {
 };
 
 interface ActiveEventResponse {
+  isNotLogin: boolean;
   giftName: string;
   count: number;
   giftImageUrl: string;
@@ -55,28 +56,40 @@ const formatDateTime = (dateStr: string) => {
 
 export const EventInfoPage = () => {
   const navigate = useNavigate();
+  const axiosInstance = useAxios();
   const [eventData, setEventData] = useState<ActiveEventResponse | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [betPoint, setBetPoint] = useState<string>('');
+  const [userPoints, setUserPoints] = useState<number>(0);
 
-  const fetchEventData = async () => {
+  const fetchUserPoints = useCallback(async () => {
     try {
-      const apiUrl = import.meta.env.VITE_BASE_URL || '';
-      const response = await axios.get<ActiveEventResponse>(`${apiUrl}/event/lastest`);
+      const response = await axiosInstance.get<{ point: number }>('/event/point');
+      setUserPoints(response.data.point);
+    } catch (error) {
+      console.error('Failed to fetch user points:', error);
+    }
+  }, [axiosInstance]);
+
+  const fetchEventData = useCallback(async () => {
+    try {
+      const response = await axiosInstance.get<ActiveEventResponse>('/event/lastest');
       console.log(response.data);
       setEventData(response.data);
     } catch (error) {
       console.error('Failed to fetch event data:', error);
     }
-  };
+  }, [axiosInstance]);
 
   useEffect(() => {
     fetchEventData();
-  }, []);
+    fetchUserPoints();
+  }, [fetchEventData, fetchUserPoints]);
 
   const handleJoinClick = () => {
     setIsModalOpen(true);
     setBetPoint('');
+    fetchUserPoints(); // Refresh points when opening modal
   };
 
   const handleJoinSubmit = async () => {
@@ -87,18 +100,18 @@ export const EventInfoPage = () => {
       alert('1포인트 이상 입력해주세요.');
       return;
     }
-    if (points > eventData.userStatus.myPoints) {
+    if (points > userPoints) {
       alert('보유 포인트보다 많이 베팅할 수 없습니다.');
       return;
     }
 
     try {
-      const apiUrl = import.meta.env.VITE_BASE_URL || '';
       // TODO: Verify the exact endpoint for event participation
-      await axios.post(`${apiUrl}/event/participate`, { point: points });
+      await axiosInstance.post('/event/participate', { point: points });
       alert('참여가 완료되었습니다!');
       setIsModalOpen(false);
-      fetchEventData(); // Refresh data
+      fetchEventData(); // Refresh event data
+      fetchUserPoints(); // Refresh user points
     } catch (error) {
       console.error('Failed to join event:', error);
       alert('참여 처리에 실패했습니다.');
@@ -115,17 +128,23 @@ export const EventInfoPage = () => {
       };
     }
 
-    const { period, stats, userStatus, count } = eventData;
+    const { period, stats, userStatus, count, isNotLogin } = eventData;
+
+    const isGuest = isNotLogin !== false;
 
     const pointStatsData: PointStat[] = [
-      {
-        id: 'myPoints',
-        label: '내 보유 포인트',
-        value: `${formatNumber(userStatus.myPoints)} P`,
-        icon: 'fas fa-user',
-        containerClassName: 'bg-blue-50',
-        iconClassName: 'bg-blue-500',
-      },
+      ...(isGuest
+        ? []
+        : [
+            {
+              id: 'myPoints',
+              label: '내 사용 포인트',
+              value: `${formatNumber(userPoints)} P`,
+              icon: 'fas fa-user',
+              containerClassName: 'bg-blue-50',
+              iconClassName: 'bg-blue-500',
+            },
+          ]),
       {
         id: 'totalPoints',
         label: '총 모인 포인트',
@@ -171,10 +190,15 @@ export const EventInfoPage = () => {
       progressWidth: `${clampPercentage(userStatus.winProbability)}%`,
       probabilityLabel: `${userStatus.winProbability}%`,
     };
-  }, [eventData]);
+  }, [eventData, userPoints]);
 
   const handleBackClick = () => {
     navigate(-1);
+  };
+
+  const handleLoginClick = () => {
+    const apiUrl = import.meta.env.VITE_BASE_URL;
+    window.location.href = `${apiUrl}/oauth2/authorization/kakao`;
   };
 
   if (!eventData) {
@@ -227,10 +251,14 @@ export const EventInfoPage = () => {
 
         <button
           type="button"
-          onClick={handleJoinClick}
-          className="w-full bg-orange-500 text-white font-bold text-lg py-4 rounded-xl active:bg-orange-600 transition-colors shadow-orange-200 shadow-lg"
+          onClick={eventData.isNotLogin !== false ? handleLoginClick : handleJoinClick}
+          className={`w-full font-bold text-lg py-4 rounded-xl transition-colors shadow-lg ${
+            eventData.isNotLogin !== false
+              ? 'bg-yellow-400 text-gray-900 active:bg-yellow-500 shadow-yellow-200'
+              : 'bg-orange-500 text-white active:bg-orange-600 shadow-orange-200'
+          }`}
         >
-          이벤트 참여하기
+          {eventData.isNotLogin !== false ? '로그인하기' : '이벤트 참여하기'}
         </button>
 
         <section className="bg-white rounded-2xl p-6 shadow-sm">
@@ -261,25 +289,27 @@ export const EventInfoPage = () => {
           </div>
         </section>
 
-        <section className="bg-white rounded-2xl p-6 shadow-sm">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">당첨 확률</h3>
-          <div className="text-center mb-4">
-            <div className="text-3xl font-bold text-orange-500 mb-2">{probabilityLabel}</div>
-            <p className="text-sm text-gray-600">현재 예상 당첨 확률</p>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
-            <div
-              className="bg-gradient-to-r from-orange-400 to-orange-500 h-3 rounded-full"
-              style={{ width: progressWidth }}
-              aria-label={`당첨 확률 ${probabilityLabel}`}
-            />
-          </div>
-          <div className="flex justify-between text-xs text-gray-500">
-            <span>0%</span>
-            <span>50%</span>
-            <span>100%</span>
-          </div>
-        </section>
+        {eventData.isNotLogin === false && (
+          <section className="bg-white rounded-2xl p-6 shadow-sm">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">당첨 확률</h3>
+            <div className="text-center mb-4">
+              <div className="text-3xl font-bold text-orange-500 mb-2">{probabilityLabel}</div>
+              <p className="text-sm text-gray-600">현재 예상 당첨 확률</p>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
+              <div
+                className="bg-gradient-to-r from-orange-400 to-orange-500 h-3 rounded-full"
+                style={{ width: progressWidth }}
+                aria-label={`당첨 확률 ${probabilityLabel}`}
+              />
+            </div>
+            <div className="flex justify-between text-xs text-gray-500">
+              <span>0%</span>
+              <span>50%</span>
+              <span>100%</span>
+            </div>
+          </section>
+        )}
       </main>
 
       {/* Participation Modal */}
@@ -300,9 +330,7 @@ export const EventInfoPage = () => {
             <div className="space-y-6">
               <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
                 <p className="text-sm text-gray-500 mb-1">내 보유 포인트</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {formatNumber(eventData.userStatus.myPoints)} P
-                </p>
+                <p className="text-2xl font-bold text-gray-900">{formatNumber(userPoints)} P</p>
               </div>
 
               <div>
@@ -320,7 +348,7 @@ export const EventInfoPage = () => {
                   />
                   <button
                     type="button"
-                    onClick={() => setBetPoint(eventData.userStatus.myPoints.toString())}
+                    onClick={() => setBetPoint(userPoints.toString())}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-orange-500 bg-orange-50 px-2.5 py-1.5 rounded-lg hover:bg-orange-100 transition-colors"
                   >
                     전액사용
