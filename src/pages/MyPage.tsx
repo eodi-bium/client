@@ -1,51 +1,148 @@
-import { useMemo } from 'react';
-import {
-  eventBadgeStyleMap,
-  myPageData,
-  recyclingTypeIconMap,
-  type RecyclingHistoryEntry,
-} from '../data/myPage';
+import { useEffect, useMemo, useState } from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
+import { recyclingTypeIconMap } from '../data/myPage';
+import { useAuth } from '../context/AuthContext';
+import { useAxios } from '../hooks/useAxios';
 
-type RecyclingSummary = Record<
-  string,
-  {
-    count: number;
-    points: number;
-  }
->;
+// API 응답 타입 정의
+interface RecyclingRecord {
+  recyclingType: string;
+  count: number;
+  point: number;
+}
 
-type GroupedHistory = Record<string, RecyclingHistoryEntry[]>;
+interface MemberInfoResponse {
+  nickname: string;
+  records: RecyclingRecord[];
+}
 
+// 아이콘 가져오기 헬퍼 함수
 const getTypeIcon = (type: string) => recyclingTypeIconMap[type] ?? 'fas fa-trash-alt';
 
-const getEventBadgeStyle = (eventName: string) =>
-  eventBadgeStyleMap[eventName] ?? 'bg-gray-100 text-gray-700';
+// JWT에서 memberId 추출하는 함수
+const getMemberIdFromToken = (token: string): string => {
+  if (!token) return '';
+
+  try {
+    const base64Url = token.split('.')[1];
+    if (!base64Url) return '';
+
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      window
+        .atob(base64)
+        .split('')
+        .map(function (c) {
+          return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+        })
+        .join('')
+    );
+    const payload = JSON.parse(jsonPayload);
+    return payload.userId || payload.sub || '';
+  } catch (e) {
+    console.error('Failed to parse JWT', e);
+    return '';
+  }
+};
 
 export const MyPage = () => {
-  const recyclingSummary = useMemo<RecyclingSummary>(() => {
-    return myPageData.history.reduce<RecyclingSummary>((acc, entry) => {
-      if (!acc[entry.type]) {
-        acc[entry.type] = { count: 0, points: 0 };
+  // 1. AuthContext 상태 가져오기
+  const { accessToken, isLoggedIn, isLoading: isAuthLoading } = useAuth();
+
+  // 2. useAxios 훅 사용 (헤더, baseURL 처리가 된 axios 인스턴스)
+  const axios = useAxios();
+
+  const [memberInfo, setMemberInfo] = useState<MemberInfoResponse | null>(null);
+  const [memberId, setMemberId] = useState<string>('');
+  const [isDataLoading, setIsDataLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    // 인증 로딩 중이면 대기
+    if (isAuthLoading) return;
+
+    // 로그인이 안 되어 있거나 토큰이 없으면 중단
+    if (!isLoggedIn || !accessToken) {
+      return;
+    }
+
+    const fetchData = async () => {
+      setIsDataLoading(true);
+      try {
+        const id = getMemberIdFromToken(accessToken);
+        setMemberId(id);
+
+        const response = await axios.get('/memberInfo');
+
+        console.log('MemberInfo Response:', response.data);
+
+        if (response.data && response.data.body) {
+          setMemberInfo(response.data.body);
+        } else {
+          setMemberInfo(response.data);
+        }
+      } catch (error: any) {
+        console.error('회원 정보 요청 실패:', error);
+        if (error.response) {
+          console.error('Status:', error.response.status);
+        }
+      } finally {
+        setIsDataLoading(false);
       }
-      acc[entry.type].count += entry.quantity;
-      acc[entry.type].points += entry.points;
-      return acc;
-    }, {});
-  }, []);
+    };
 
-  const groupedByEvent = useMemo<GroupedHistory>(() => {
-    return myPageData.history.reduce<GroupedHistory>((acc, entry) => {
-      if (!acc[entry.event]) {
-        acc[entry.event] = [];
-      }
-      acc[entry.event].push(entry);
-      return acc;
-    }, {});
-  }, []);
+    fetchData();
+  }, [accessToken, isLoggedIn, isAuthLoading, axios]);
 
-  const hasHistory = myPageData.history.length > 0;
+  // 총 포인트 계산
+  const totalPoints = useMemo(() => {
+    if (!memberInfo || !memberInfo.records) return 0;
+    return memberInfo.records.reduce((acc, record) => acc + record.point, 0);
+  }, [memberInfo]);
 
+  // 로그인 버튼 핸들러
+  const handleLoginClick = () => {
+    const apiUrl = import.meta.env.VITE_BASE_URL;
+    window.location.href = `${apiUrl}/oauth2/authorization/kakao`;
+  };
+
+  // 로딩 화면
+  if (isAuthLoading || isDataLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-blue-50">
+        <div className="text-xl font-semibold text-gray-600">
+          {isAuthLoading ? '로그인 확인 중...' : '정보를 불러오는 중...'}
+        </div>
+      </div>
+    );
+  }
+
+  // 로그인 필요 화면
+  if (!isLoggedIn) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-green-50 to-blue-50 px-4">
+        <div className="bg-white p-8 rounded-2xl shadow-lg text-center max-w-sm w-full">
+          <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <i className="ri-login-circle-line text-3xl text-orange-500"></i>
+          </div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">로그인이 필요합니다</h2>
+          <p className="text-gray-600 mb-6">
+            마이페이지를 이용하시려면
+            <br />
+            로그인을 진행해주세요.
+          </p>
+          <button
+            onClick={handleLoginClick}
+            className="w-full py-3 px-4 bg-[#FEE500] hover:bg-[#FDD835] text-[#3c1e1e] font-semibold rounded-xl transition-colors duration-200 flex items-center justify-center gap-2"
+          >
+            <i className="ri-kakao-talk-fill text-xl"></i>
+            카카오로 로그인하기
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // 정상 렌더링 화면
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50">
       <div className="max-w-4xl mx-auto px-6 py-8">
@@ -54,33 +151,39 @@ export const MyPage = () => {
           <div className="w-24 h-1 bg-green-500 mx-auto rounded-full" />
         </section>
 
+        {/* 사용자 정보 및 QR 코드 섹션 */}
         <section className="bg-white rounded-2xl shadow-lg p-8 mb-8 border border-gray-100">
           <div className="flex items-center justify-center mb-6">
             <div className="w-20 h-20 bg-gradient-to-r from-green-400 to-blue-500 rounded-full flex items-center justify-center mr-6">
               <i className="fas fa-user text-white text-2xl" />
             </div>
             <div>
-              <h2 className="text-2xl font-semibold text-gray-800 mb-2">내 ID</h2>
-              <p className="text-xl text-gray-600 font-medium">{myPageData.userId}</p>
+              <h2 className="text-2xl font-semibold text-gray-800 mb-2">내 닉네임</h2>
+              <p className="text-xl text-gray-600 font-medium">
+                {memberInfo?.nickname || '닉네임 없음'}
+              </p>
             </div>
             <div className="ml-8 p-2 bg-white rounded-xl shadow-sm border border-gray-100">
-              <QRCodeCanvas
-                value={`${window.location.origin}/process-qr?user_id=${myPageData.userId}`}
-                size={80}
-              />
+              {memberId && (
+                <QRCodeCanvas
+                  value={`${window.location.origin}/process-qr?user_id=${memberId}`}
+                  size={80}
+                />
+              )}
             </div>
           </div>
         </section>
 
+        {/* 포인트 및 분리수거 현황 섹션 */}
         <section className="mb-8">
           <div className="bg-white rounded-2xl shadow-lg p-8 border border-gray-100">
             <div className="text-center mb-6">
               <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full mb-4">
                 <i className="fas fa-coins text-white text-2xl" />
               </div>
-              <h3 className="text-2xl font-semibold text-gray-800 mb-3">응모포인트</h3>
+              <h3 className="text-2xl font-semibold text-gray-800 mb-3">총 응모 포인트</h3>
               <div className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-green-500 to-blue-600 mb-2">
-                {myPageData.totalPoints.toLocaleString()}
+                {totalPoints.toLocaleString()}
               </div>
               <p className="text-gray-500 text-lg">포인트</p>
             </div>
@@ -90,102 +193,32 @@ export const MyPage = () => {
                 분리수거 세부 현황
               </h4>
               <div className="grid grid-cols-2 gap-3">
-                {Object.entries(recyclingSummary).map(([type, summary]) => (
-                  <div key={type} className="bg-gray-50 rounded-lg p-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center">
-                        <i className={`${getTypeIcon(type)} text-green-600 mr-2`} />
-                        <span className="text-sm font-medium text-gray-700">{type}</span>
+                {memberInfo?.records && memberInfo.records.length > 0 ? (
+                  memberInfo.records.map((record) => (
+                    <div key={record.recyclingType} className="bg-gray-50 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center">
+                          <i
+                            className={`${getTypeIcon(record.recyclingType)} text-green-600 mr-2`}
+                          />
+                          <span className="text-sm font-medium text-gray-700">
+                            {record.recyclingType}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-lg font-bold text-gray-800">{record.count}개</div>
+                        <div className="text-xs text-green-600">+{record.point}p</div>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-lg font-bold text-gray-800">{summary.count}개</div>
-                      <div className="text-xs text-green-600">+{summary.points}p</div>
-                    </div>
+                  ))
+                ) : (
+                  <div className="col-span-2 text-center text-gray-500 py-4">
+                    아직 분리수거 기록이 없습니다.
                   </div>
-                ))}
+                )}
               </div>
             </div>
-          </div>
-        </section>
-
-        <section className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
-          <div className="bg-gradient-to-r from-green-500 to-blue-600 px-8 py-6">
-            <h3 className="text-2xl font-semibold text-white flex items-center">
-              <i className="fas fa-history mr-3" />
-              분리수거 내역
-            </h3>
-          </div>
-
-          <div className="p-8">
-            {!hasHistory ? (
-              <div className="text-center py-12">
-                <i className="fas fa-inbox text-gray-300 text-6xl mb-4" />
-                <p className="text-gray-500 text-lg">분리수거 내역이 없습니다.</p>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {Object.entries(groupedByEvent).map(([eventName, entries]) => (
-                  <article
-                    key={eventName}
-                    className="border border-gray-200 rounded-xl overflow-hidden"
-                  >
-                    <header
-                      className={`px-6 py-4 ${getEventBadgeStyle(
-                        eventName
-                      )} border-b border-gray-200`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center">
-                          <i className="fas fa-gift mr-3" />
-                          <h4 className="text-lg font-semibold">{eventName}</h4>
-                        </div>
-                        <button
-                          type="button"
-                          className="flex items-center px-3 py-1 bg-white bg-opacity-20 hover:bg-opacity-30 rounded-full transition-colors duration-200 text-sm font-medium whitespace-nowrap !rounded-button"
-                        >
-                          <i className="fas fa-info-circle mr-1" />
-                          행사 정보 보기
-                        </button>
-                      </div>
-                    </header>
-
-                    <div className="bg-white">
-                      {entries.map((entry, index) => (
-                        <div
-                          key={entry.id}
-                          className={`p-6 transition-colors duration-200 border-b border-gray-100 ${
-                            index === entries.length - 1 ? 'last:border-b-0' : ''
-                          } hover:bg-gray-50`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center">
-                              <div className="w-12 h-12 bg-gradient-to-r from-green-400 to-blue-500 rounded-full flex items-center justify-center mr-4">
-                                <i className={`${getTypeIcon(entry.type)} text-white text-lg`} />
-                              </div>
-                              <div>
-                                <h5 className="text-lg font-semibold text-gray-800 mb-1">
-                                  {entry.type}
-                                </h5>
-                                <p className="text-gray-500">{entry.date}</p>
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <div className="text-lg font-semibold text-gray-800 mb-1">
-                                {entry.quantity}개
-                              </div>
-                              <div className="text-green-600 font-medium">
-                                +{entry.points} 포인트
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
           </div>
         </section>
 

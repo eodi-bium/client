@@ -1,7 +1,6 @@
 export const adminItemOptions = [
   { value: 'BATTERY', label: '폐건전지' },
   { value: 'LIGHT', label: '폐형광등' },
-  { value: 'PHONE', label: '폐휴대폰' },
   { value: 'CLOTHES', label: '의류' },
 ] as const;
 
