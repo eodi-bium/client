@@ -1,4 +1,5 @@
 import { type FormEvent, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAxios } from '../hooks/useAxios';
 import { adminItemOptions } from '../data/admin';
 
@@ -17,7 +18,7 @@ const AdminHeader = () => (
             <i className="ri-admin-line text-white text-xl"></i>
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-800">포인트 관리 시스템</h1>
+            <h1 className="text-2xl font-bold text-slate-800">관리자 페이지</h1>
           </div>
         </div>
       </div>
@@ -45,9 +46,14 @@ const CreditPointsForm = ({
   onSubmit,
 }: CreditPointsFormProps) => (
   <div className="rounded-2xl bg-white p-6 shadow-xl">
-    <h3 className="text-lg font-semibold text-slate-900">포인트 부여</h3>
+    <div className="flex items-center gap-2 mb-6">
+      <div className="p-2 bg-teal-100 rounded-lg text-teal-600">
+        <i className="ri-hand-coin-line text-xl"></i>
+      </div>
+      <h3 className="text-lg font-semibold text-slate-900">포인트 지급</h3>
+    </div>
 
-    <form onSubmit={onSubmit} className="mt-6 space-y-5">
+    <form onSubmit={onSubmit} className="space-y-5">
       <div className="space-y-2">
         <label className="block text-sm font-semibold text-slate-700">사용자 아이디</label>
         <div className="relative">
@@ -56,7 +62,7 @@ const CreditPointsForm = ({
           </span>
           <input
             type="text"
-            placeholder="Enter user ID"
+            placeholder="사용자 아이디 입력"
             required
             value={userId}
             onChange={(e) => onUserIdChange(e.target.value)}
@@ -74,7 +80,7 @@ const CreditPointsForm = ({
             className="flex items-center gap-1 rounded-lg bg-teal-500 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-teal-600"
           >
             <i className="ri-add-line"></i>
-            Add item
+            항목 추가
           </button>
         </div>
 
@@ -88,7 +94,7 @@ const CreditPointsForm = ({
                   onChange={(e) => onItemChange(item.id, 'type', e.target.value)}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-700 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-teal-500"
                 >
-                  <option value="">Select item</option>
+                  <option value="">쓰레기 종류 선택</option>
                   {adminItemOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
@@ -98,7 +104,7 @@ const CreditPointsForm = ({
 
                 <input
                   type="number"
-                  placeholder="Quantity"
+                  placeholder="수량"
                   required
                   min={1}
                   value={item.quantity}
@@ -127,17 +133,175 @@ const CreditPointsForm = ({
       >
         <span className="inline-flex items-center justify-center gap-2">
           <i className="ri-check-line text-lg"></i>
-          Credit points
+          포인트 지급하기
         </span>
       </button>
     </form>
   </div>
 );
 
+interface EventFormData {
+  giftName: string;
+  imageUrl: string;
+  startDate: string;
+  endDate: string;
+  announcementDate: string;
+}
+
+const getFormattedDate = (date: Date) => {
+  const offset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+};
+
+const getDefaultEventDates = () => {
+  const now = new Date();
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const announcement = new Date(tomorrow);
+  announcement.setMinutes(announcement.getMinutes() + 30);
+
+  return {
+    startDate: getFormattedDate(now),
+    endDate: getFormattedDate(tomorrow),
+    announcementDate: getFormattedDate(announcement),
+  };
+};
+
+const AddEventForm = () => {
+  const axios = useAxios();
+  const [formData, setFormData] = useState<EventFormData>(() => ({
+    giftName: '',
+    imageUrl: '',
+    ...getDefaultEventDates(),
+  }));
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    try {
+      const payload = {
+        giftName: formData.giftName,
+        gifPictureUrl: formData.imageUrl,
+        startDate: new Date(formData.startDate).toISOString(),
+        endDate: new Date(formData.endDate).toISOString(),
+        announcementDate: new Date(formData.announcementDate).toISOString(),
+      };
+
+      await axios.post('/admin/event/add', payload);
+      alert('행사가 성공적으로 등록되었습니다!');
+      setFormData({
+        giftName: '',
+        imageUrl: '',
+        ...getDefaultEventDates(),
+      });
+    } catch (error) {
+      console.error('Failed to add event:', error);
+      alert('행사 등록에 실패했습니다.');
+    }
+  };
+
+  return (
+    <div className="rounded-2xl bg-white p-6 shadow-xl">
+      <div className="flex items-center gap-2 mb-6">
+        <div className="p-2 bg-orange-100 rounded-lg text-orange-600">
+          <i className="ri-calendar-event-line text-xl"></i>
+        </div>
+        <h3 className="text-lg font-semibold text-slate-900">행사 등록</h3>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="space-y-2">
+          <label className="block text-sm font-semibold text-slate-700">행사 상품명</label>
+          <input
+            type="text"
+            name="giftName"
+            value={formData.giftName}
+            onChange={handleChange}
+            required
+            placeholder="상품명을 입력하세요"
+            className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm text-slate-700 shadow-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-orange-500"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label className="block text-sm font-semibold text-slate-700">이미지 URL</label>
+          <input
+            type="url"
+            name="imageUrl"
+            value={formData.imageUrl}
+            onChange={handleChange}
+            required
+            placeholder="https://example.com/image.jpg"
+            className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm text-slate-700 shadow-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-orange-500"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="space-y-2">
+            <label className="block text-sm font-semibold text-slate-700">시작일</label>
+            <input
+              type="datetime-local"
+              name="startDate"
+              value={formData.startDate}
+              onChange={handleChange}
+              required
+              className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm text-slate-700 shadow-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="block text-sm font-semibold text-slate-700">종료일</label>
+            <input
+              type="datetime-local"
+              name="endDate"
+              value={formData.endDate}
+              onChange={handleChange}
+              required
+              className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm text-slate-700 shadow-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="block text-sm font-semibold text-slate-700">발표일</label>
+            <input
+              type="datetime-local"
+              name="announcementDate"
+              value={formData.announcementDate}
+              onChange={handleChange}
+              required
+              className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm text-slate-700 shadow-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
+          </div>
+        </div>
+
+        <button
+          type="submit"
+          className="w-full rounded-lg bg-gradient-to-r from-orange-500 to-amber-600 px-4 py-3 text-sm font-semibold text-white shadow-lg transition hover:from-orange-600 hover:to-amber-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2"
+        >
+          <span className="inline-flex items-center justify-center gap-2">
+            <i className="ri-add-circle-line text-lg"></i>
+            행사 등록하기
+          </span>
+        </button>
+      </form>
+    </div>
+  );
+};
+
 export const AdminPage = () => {
   const axios = useAxios();
-  const [userId, setUserId] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') === 'events' ? 'events' : 'points';
+
+  const [userId, setUserId] = useState(searchParams.get('user_id') || '');
   const [items, setItems] = useState<Item[]>([{ id: '1', type: '', quantity: 1 }]);
+
+  const handleTabChange = (tab: 'points' | 'events') => {
+    setSearchParams({ tab });
+  };
 
   const handleAddItem = () => {
     setItems((prev) => [...prev, { id: Date.now().toString(), type: '', quantity: 1 }]);
@@ -174,13 +338,13 @@ export const AdminPage = () => {
     event.preventDefault();
 
     if (!userId.trim()) {
-      alert('Please enter a valid user ID.');
+      alert('유효한 사용자 아이디를 입력해주세요.');
       return;
     }
 
     const invalidItems = items.filter((item) => !item.type || item.quantity < 1);
     if (invalidItems.length > 0) {
-      alert('Please choose an item and quantity for every entry before submitting.');
+      alert('제출하기 전에 모든 항목에 대해 종류와 수량을 선택해주세요.');
       return;
     }
 
@@ -207,16 +371,49 @@ export const AdminPage = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <AdminHeader />
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-10">
-        <CreditPointsForm
-          userId={userId}
-          items={items}
-          onUserIdChange={setUserId}
-          onAddItem={handleAddItem}
-          onRemoveItem={handleRemoveItem}
-          onItemChange={handleItemChange}
-          onSubmit={handleSubmit}
-        />
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-6">
+        <div className="flex space-x-2 bg-white p-1 rounded-xl shadow-sm w-fit">
+          <button
+            onClick={() => handleTabChange('points')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === 'points'
+                ? 'bg-teal-500 text-white shadow-md'
+                : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <i className="ri-hand-coin-line"></i>
+              포인트 지급
+            </span>
+          </button>
+          <button
+            onClick={() => handleTabChange('events')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === 'events'
+                ? 'bg-orange-500 text-white shadow-md'
+                : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <i className="ri-calendar-event-line"></i>
+              행사 등록
+            </span>
+          </button>
+        </div>
+
+        {activeTab === 'points' ? (
+          <CreditPointsForm
+            userId={userId}
+            items={items}
+            onUserIdChange={setUserId}
+            onAddItem={handleAddItem}
+            onRemoveItem={handleRemoveItem}
+            onItemChange={handleItemChange}
+            onSubmit={handleSubmit}
+          />
+        ) : (
+          <AddEventForm />
+        )}
       </main>
     </div>
   );

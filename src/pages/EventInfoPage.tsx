@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import deviceImage from '../assets/onboarding-device.jpg';
+import axios from 'axios';
 
 type PointStat = {
   id: string;
@@ -19,36 +19,76 @@ type EventDetail = {
   valueClassName?: string;
 };
 
-type ParticipationHistory = {
-  id: string;
-  title: string;
-  date: string;
-  amount: string;
-  icon: string;
-  iconClassName: string;
-  amountClassName: string;
-};
+interface ActiveEventResponse {
+  giftName: string;
+  gifPictureUrl: string;
+  period: {
+    startDate: string;
+    endDate: string;
+    announcementDate: string;
+  };
+  stats: {
+    totalAccumulatedPoints: number;
+    totalParticipants: number;
+  };
+  userStatus: {
+    myPoints: number;
+    winProbability: number;
+  };
+}
 
 const clampPercentage = (value: number) => Math.max(0, Math.min(100, value));
 
+const formatNumber = (num: number) => new Intl.NumberFormat('ko-KR').format(num);
+
+const calculateRemainingTime = (endDate: string) => {
+  const end = new Date(endDate).getTime();
+  const now = new Date().getTime();
+  const diff = end - now;
+
+  if (diff <= 0) return '종료됨';
+
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+
+  return `${days}일 ${hours}시간`;
+};
+
 export const EventInfoPage = () => {
   const navigate = useNavigate();
+  const [eventData, setEventData] = useState<ActiveEventResponse | null>(null);
 
-  const { eventMeta, pointStats, eventDetails, progressWidth, probabilityLabel } = useMemo(() => {
-    const eventMetaData = {
-      name: '맥북 프로',
-      schedule: '2024년 12월 행사',
-      winProbability: 2.7,
-      minPoints: '100 P',
-      announcementDate: '2025.01.02',
-      remainingTime: '12일 5시간',
+  useEffect(() => {
+    const fetchEventData = async () => {
+      try {
+        const apiUrl = import.meta.env.VITE_BASE_URL || '';
+        const response = await axios.get<ActiveEventResponse>(`${apiUrl}/event/latest`);
+        setEventData(response.data);
+      } catch (error) {
+        console.error('Failed to fetch event data:', error);
+      }
     };
+
+    fetchEventData();
+  }, []);
+
+  const { pointStats, eventDetails, progressWidth, probabilityLabel } = useMemo(() => {
+    if (!eventData) {
+      return {
+        pointStats: [],
+        eventDetails: [],
+        progressWidth: '0%',
+        probabilityLabel: '0%',
+      };
+    }
+
+    const { period, stats, userStatus } = eventData;
 
     const pointStatsData: PointStat[] = [
       {
         id: 'myPoints',
         label: '내 보유 포인트',
-        value: '1,250 P',
+        value: `${formatNumber(userStatus.myPoints)} P`,
         icon: 'fas fa-user',
         containerClassName: 'bg-blue-50',
         iconClassName: 'bg-blue-500',
@@ -56,7 +96,7 @@ export const EventInfoPage = () => {
       {
         id: 'totalPoints',
         label: '총 모인 포인트',
-        value: '45,680 P',
+        value: `${formatNumber(stats.totalAccumulatedPoints)} P`,
         icon: 'fas fa-coins',
         containerClassName: 'bg-green-50',
         iconClassName: 'bg-green-500',
@@ -64,7 +104,7 @@ export const EventInfoPage = () => {
       {
         id: 'participants',
         label: '총 참여자',
-        value: '1,847 명',
+        value: `${formatNumber(stats.totalParticipants)} 명`,
         icon: 'fas fa-users',
         containerClassName: 'bg-purple-50',
         iconClassName: 'bg-purple-500',
@@ -72,51 +112,42 @@ export const EventInfoPage = () => {
     ];
 
     const eventDetailsData: EventDetail[] = [
-      { id: 'period', label: '행사 기간', value: '2024.12.01 - 2024.12.31' },
-      { id: 'minPoint', label: '최소 참여 포인트', value: eventMetaData.minPoints },
-      { id: 'announcement', label: '당첨자 발표', value: eventMetaData.announcementDate },
+      {
+        id: 'period',
+        label: '행사 기간',
+        value: `${period.startDate.split('T')[0].replace(/-/g, '.')} - ${period.endDate.split('T')[0].replace(/-/g, '.')}`,
+      },
+      { id: 'minPoint', label: '최소 참여 포인트', value: '100 P' }, // 고정값 혹은 API에 추가 필요
+      {
+        id: 'announcement',
+        label: '당첨자 발표',
+        value: period.announcementDate.split('T')[0].replace(/-/g, '.'),
+      },
       {
         id: 'remainingTime',
         label: '남은 시간',
-        value: eventMetaData.remainingTime,
+        value: calculateRemainingTime(period.endDate),
         valueClassName: 'text-orange-500',
       },
     ];
 
-    const participationHistoryData: ParticipationHistory[] = [
-      {
-        id: 'history-1',
-        title: '포인트 참여',
-        date: '2024.11.15 14:30',
-        amount: '+500 P',
-        icon: 'fas fa-plus',
-        iconClassName: 'bg-blue-500',
-        amountClassName: 'text-blue-600',
-      },
-      {
-        id: 'history-2',
-        title: '포인트 참여',
-        date: '2024.11.10 09:15',
-        amount: '+300 P',
-        icon: 'fas fa-plus',
-        iconClassName: 'bg-green-500',
-        amountClassName: 'text-green-600',
-      },
-    ];
-
     return {
-      eventMeta: eventMetaData,
       pointStats: pointStatsData,
       eventDetails: eventDetailsData,
-      participationHistory: participationHistoryData,
-      progressWidth: `${clampPercentage(eventMetaData.winProbability)}%`,
-      probabilityLabel: `${eventMetaData.winProbability}%`,
+      progressWidth: `${clampPercentage(userStatus.winProbability)}%`,
+      probabilityLabel: `${userStatus.winProbability}%`,
     };
-  }, []);
+  }, [eventData]);
 
   const handleBackClick = () => {
     navigate(-1);
   };
+
+  if (!eventData) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">로딩 중...</div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -140,16 +171,19 @@ export const EventInfoPage = () => {
           <div className="flex flex-col items-center text-center">
             <div className="w-48 h-32 mb-4 overflow-hidden rounded-xl">
               <img
-                src={deviceImage}
-                alt={eventMeta.name}
+                src={eventData.gifPictureUrl}
+                alt={eventData.giftName}
                 className="w-full h-full object-cover object-top"
                 loading="lazy"
               />
             </div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">{eventMeta.name}</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">{eventData.giftName}</h2>
             <div className="flex items-center text-sm text-gray-500">
               <i className="fas fa-calendar-alt mr-1" aria-hidden />
-              <span>{eventMeta.schedule}</span>
+              <span>
+                {eventData.period.startDate.split('T')[0].replace(/-/g, '.')} ~{' '}
+                {eventData.period.endDate.split('T')[0].replace(/-/g, '.')}
+              </span>
             </div>
           </div>
         </section>

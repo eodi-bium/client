@@ -5,6 +5,7 @@ import {
   recyclingTypeIconMap,
   type RecyclingHistoryEntry,
 } from '../data/myPage';
+import { QRCodeCanvas } from 'qrcode.react';
 
 type RecyclingSummary = Record<
   string,
@@ -61,6 +62,12 @@ export const MyPage = () => {
             <div>
               <h2 className="text-2xl font-semibold text-gray-800 mb-2">내 ID</h2>
               <p className="text-xl text-gray-600 font-medium">{myPageData.userId}</p>
+            </div>
+            <div className="ml-8 p-2 bg-white rounded-xl shadow-sm border border-gray-100">
+              <QRCodeCanvas
+                value={`${window.location.origin}/process-qr?user_id=${myPageData.userId}`}
+                size={80}
+              />
             </div>
           </div>
         </section>
