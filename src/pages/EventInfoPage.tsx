@@ -17,11 +17,13 @@ type EventDetail = {
   label: string;
   value: string;
   valueClassName?: string;
+  icon?: string;
 };
 
 interface ActiveEventResponse {
   giftName: string;
-  gifPictureUrl: string;
+  count: number;
+  giftImageUrl: string;
   period: {
     startDate: string;
     endDate: string;
@@ -41,36 +43,67 @@ const clampPercentage = (value: number) => Math.max(0, Math.min(100, value));
 
 const formatNumber = (num: number) => new Intl.NumberFormat('ko-KR').format(num);
 
-const calculateRemainingTime = (endDate: string) => {
-  const end = new Date(endDate).getTime();
-  const now = new Date().getTime();
-  const diff = end - now;
-
-  if (diff <= 0) return '종료됨';
-
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-
-  return `${days}일 ${hours}시간`;
+const formatDateTime = (dateStr: string) => {
+  const date = new Date(dateStr);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${year}.${month}.${day} ${hours}시 ${minutes}분`;
 };
 
 export const EventInfoPage = () => {
   const navigate = useNavigate();
   const [eventData, setEventData] = useState<ActiveEventResponse | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [betPoint, setBetPoint] = useState<string>('');
+
+  const fetchEventData = async () => {
+    try {
+      const apiUrl = import.meta.env.VITE_BASE_URL || '';
+      const response = await axios.get<ActiveEventResponse>(`${apiUrl}/event/lastest`);
+      console.log(response.data);
+      setEventData(response.data);
+    } catch (error) {
+      console.error('Failed to fetch event data:', error);
+    }
+  };
 
   useEffect(() => {
-    const fetchEventData = async () => {
-      try {
-        const apiUrl = import.meta.env.VITE_BASE_URL || '';
-        const response = await axios.get<ActiveEventResponse>(`${apiUrl}/event/latest`);
-        setEventData(response.data);
-      } catch (error) {
-        console.error('Failed to fetch event data:', error);
-      }
-    };
-
     fetchEventData();
   }, []);
+
+  const handleJoinClick = () => {
+    setIsModalOpen(true);
+    setBetPoint('');
+  };
+
+  const handleJoinSubmit = async () => {
+    if (!eventData) return;
+    const points = Number(betPoint.replace(/[^0-9]/g, '')); // Remove non-numeric chars just in case
+
+    if (points <= 0) {
+      alert('1포인트 이상 입력해주세요.');
+      return;
+    }
+    if (points > eventData.userStatus.myPoints) {
+      alert('보유 포인트보다 많이 베팅할 수 없습니다.');
+      return;
+    }
+
+    try {
+      const apiUrl = import.meta.env.VITE_BASE_URL || '';
+      // TODO: Verify the exact endpoint for event participation
+      await axios.post(`${apiUrl}/event/participate`, { point: points });
+      alert('참여가 완료되었습니다!');
+      setIsModalOpen(false);
+      fetchEventData(); // Refresh data
+    } catch (error) {
+      console.error('Failed to join event:', error);
+      alert('참여 처리에 실패했습니다.');
+    }
+  };
 
   const { pointStats, eventDetails, progressWidth, probabilityLabel } = useMemo(() => {
     if (!eventData) {
@@ -82,7 +115,7 @@ export const EventInfoPage = () => {
       };
     }
 
-    const { period, stats, userStatus } = eventData;
+    const { period, stats, userStatus, count } = eventData;
 
     const pointStatsData: PointStat[] = [
       {
@@ -113,21 +146,22 @@ export const EventInfoPage = () => {
 
     const eventDetailsData: EventDetail[] = [
       {
+        id: 'count',
+        label: '상품 개수',
+        value: `${formatNumber(count)} 개`,
+        icon: 'fas fa-gift',
+      },
+      {
         id: 'period',
         label: '행사 기간',
-        value: `${period.startDate.split('T')[0].replace(/-/g, '.')} - ${period.endDate.split('T')[0].replace(/-/g, '.')}`,
+        value: `${formatDateTime(period.startDate)} - ${formatDateTime(period.endDate)}`,
+        icon: 'fas fa-calendar-alt',
       },
-      { id: 'minPoint', label: '최소 참여 포인트', value: '100 P' }, // 고정값 혹은 API에 추가 필요
       {
         id: 'announcement',
         label: '당첨자 발표',
-        value: period.announcementDate.split('T')[0].replace(/-/g, '.'),
-      },
-      {
-        id: 'remainingTime',
-        label: '남은 시간',
-        value: calculateRemainingTime(period.endDate),
-        valueClassName: 'text-orange-500',
+        value: formatDateTime(period.announcementDate),
+        icon: 'fas fa-bullhorn',
       },
     ];
 
@@ -171,22 +205,33 @@ export const EventInfoPage = () => {
           <div className="flex flex-col items-center text-center">
             <div className="w-48 h-32 mb-4 overflow-hidden rounded-xl">
               <img
-                src={eventData.gifPictureUrl}
+                src={eventData.giftImageUrl}
                 alt={eventData.giftName}
                 className="w-full h-full object-cover object-top"
                 loading="lazy"
               />
             </div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">{eventData.giftName}</h2>
-            <div className="flex items-center text-sm text-gray-500">
-              <i className="fas fa-calendar-alt mr-1" aria-hidden />
-              <span>
-                {eventData.period.startDate.split('T')[0].replace(/-/g, '.')} ~{' '}
-                {eventData.period.endDate.split('T')[0].replace(/-/g, '.')}
-              </span>
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">{eventData.giftName}</h2>
+            <div className="flex flex-col items-center gap-2 text-sm text-gray-500">
+              {eventDetails.map((detail) => (
+                <div key={detail.id} className="flex items-center gap-2">
+                  {detail.icon && <i className={`${detail.icon} w-4 text-center`} aria-hidden />}
+                  <span className={detail.valueClassName}>
+                    {detail.label} : {detail.value}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         </section>
+
+        <button
+          type="button"
+          onClick={handleJoinClick}
+          className="w-full bg-orange-500 text-white font-bold text-lg py-4 rounded-xl active:bg-orange-600 transition-colors shadow-orange-200 shadow-lg"
+        >
+          이벤트 참여하기
+        </button>
 
         <section className="bg-white rounded-2xl p-6 shadow-sm">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">포인트 현황</h3>
@@ -235,21 +280,78 @@ export const EventInfoPage = () => {
             <span>100%</span>
           </div>
         </section>
-
-        <section className="bg-white rounded-2xl p-6 shadow-sm">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">행사 정보</h3>
-          <div className="space-y-3">
-            {eventDetails.map((detail) => (
-              <div key={detail.id} className="flex justify-between">
-                <span className="text-gray-600">{detail.label}</span>
-                <span className={`text-gray-900 font-medium ${detail.valueClassName ?? ''}`}>
-                  {detail.value}
-                </span>
-              </div>
-            ))}
-          </div>
-        </section>
       </main>
+
+      {/* Participation Modal */}
+      {isModalOpen && eventData && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm transition-opacity">
+          <div className="bg-white w-full sm:w-[400px] rounded-t-2xl sm:rounded-2xl p-6 shadow-2xl animate-slide-up">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-gray-900">이벤트 참여</h3>
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 p-1"
+              >
+                <i className="fas fa-times text-xl" />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                <p className="text-sm text-gray-500 mb-1">내 보유 포인트</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {formatNumber(eventData.userStatus.myPoints)} P
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="betPoint" className="block text-sm font-medium text-gray-700 mb-2">
+                  사용할 포인트
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    id="betPoint"
+                    value={betPoint}
+                    onChange={(e) => setBetPoint(e.target.value)}
+                    placeholder="0"
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none transition-all text-lg font-medium"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setBetPoint(eventData.userStatus.myPoints.toString())}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-orange-500 bg-orange-50 px-2.5 py-1.5 rounded-lg hover:bg-orange-100 transition-colors"
+                  >
+                    전액사용
+                  </button>
+                </div>
+                <p className="mt-2 text-xs text-gray-500">
+                  * 한 번 참여한 포인트는 환불되지 않습니다.
+                </p>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="flex-1 py-3.5 text-gray-600 font-medium bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={handleJoinSubmit}
+                  className="flex-1 py-3.5 text-white font-bold bg-orange-500 rounded-xl hover:bg-orange-600 shadow-lg shadow-orange-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={!betPoint || Number(betPoint) <= 0}
+                >
+                  참여하기
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

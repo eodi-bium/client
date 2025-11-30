@@ -6,7 +6,7 @@ import { adminItemOptions } from '../data/admin';
 interface Item {
   id: string;
   type: string;
-  quantity: number;
+  quantity: number | string;
 }
 
 const AdminHeader = () => (
@@ -104,10 +104,9 @@ const CreditPointsForm = ({
 
                 <input
                   type="number"
-                  placeholder="수량"
-                  required
-                  min={1}
+                  name="count"
                   value={item.quantity}
+                  placeholder="0"
                   onChange={(e) => onItemChange(item.id, 'quantity', e.target.value)}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-700 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
@@ -142,7 +141,8 @@ const CreditPointsForm = ({
 
 interface EventFormData {
   giftName: string;
-  imageUrl: string;
+  count: string;
+  giftImageUrl: string;
   startDate: string;
   endDate: string;
   announcementDate: string;
@@ -172,7 +172,8 @@ const AddEventForm = () => {
   const axios = useAxios();
   const [formData, setFormData] = useState<EventFormData>(() => ({
     giftName: '',
-    imageUrl: '',
+    count: '',
+    giftImageUrl: '',
     ...getDefaultEventDates(),
   }));
 
@@ -186,7 +187,8 @@ const AddEventForm = () => {
     try {
       const payload = {
         giftName: formData.giftName,
-        gifPictureUrl: formData.imageUrl,
+        count: Number(formData.count),
+        giftImageUrl: formData.giftImageUrl,
         startDate: new Date(formData.startDate).toISOString(),
         endDate: new Date(formData.endDate).toISOString(),
         announcementDate: new Date(formData.announcementDate).toISOString(),
@@ -196,7 +198,8 @@ const AddEventForm = () => {
       alert('행사가 성공적으로 등록되었습니다!');
       setFormData({
         giftName: '',
-        imageUrl: '',
+        count: '',
+        giftImageUrl: '',
         ...getDefaultEventDates(),
       });
     } catch (error) {
@@ -215,25 +218,39 @@ const AddEventForm = () => {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        <div className="space-y-2">
-          <label className="block text-sm font-semibold text-slate-700">행사 상품명</label>
-          <input
-            type="text"
-            name="giftName"
-            value={formData.giftName}
-            onChange={handleChange}
-            required
-            placeholder="상품명을 입력하세요"
-            className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm text-slate-700 shadow-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-orange-500"
-          />
+        <div className="flex gap-4">
+          <div className="flex-1 space-y-2">
+            <label className="block text-sm font-semibold text-slate-700">행사 상품명</label>
+            <input
+              type="text"
+              name="giftName"
+              value={formData.giftName}
+              onChange={handleChange}
+              required
+              placeholder="상품명을 입력하세요"
+              className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm text-slate-700 shadow-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
+          </div>
+          <div className="w-32 space-y-2">
+            <label className="block text-sm font-semibold text-slate-700">상품 개수</label>
+            <input
+              type="number"
+              name="count"
+              value={formData.count}
+              onChange={handleChange}
+              required
+              placeholder="0"
+              className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm text-slate-700 shadow-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
+          </div>
         </div>
 
         <div className="space-y-2">
           <label className="block text-sm font-semibold text-slate-700">이미지 URL</label>
           <input
             type="url"
-            name="imageUrl"
-            value={formData.imageUrl}
+            name="giftImageUrl"
+            value={formData.giftImageUrl}
             onChange={handleChange}
             required
             placeholder="https://example.com/image.jpg"
@@ -297,14 +314,14 @@ export const AdminPage = () => {
   const activeTab = searchParams.get('tab') === 'events' ? 'events' : 'points';
 
   const [userId, setUserId] = useState(searchParams.get('user_id') || '');
-  const [items, setItems] = useState<Item[]>([{ id: '1', type: '', quantity: 1 }]);
+  const [items, setItems] = useState<Item[]>([{ id: '1', type: '', quantity: '' }]);
 
   const handleTabChange = (tab: 'points' | 'events') => {
     setSearchParams({ tab });
   };
 
   const handleAddItem = () => {
-    setItems((prev) => [...prev, { id: Date.now().toString(), type: '', quantity: 1 }]);
+    setItems((prev) => [...prev, { id: Date.now().toString(), type: '', quantity: '' }]);
   };
 
   const handleRemoveItem = (id: string) => {
@@ -317,12 +334,7 @@ export const AdminPage = () => {
         item.id === id
           ? {
               ...item,
-              [field]:
-                field === 'quantity'
-                  ? typeof value === 'number'
-                    ? value
-                    : Number(value) || 1
-                  : value,
+              [field]: value,
             }
           : item
       )
@@ -331,7 +343,7 @@ export const AdminPage = () => {
 
   const resetForm = () => {
     setUserId('');
-    setItems([{ id: '1', type: '', quantity: 1 }]);
+    setItems([{ id: '1', type: '', quantity: '' }]);
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -342,7 +354,7 @@ export const AdminPage = () => {
       return;
     }
 
-    const invalidItems = items.filter((item) => !item.type || item.quantity < 1);
+    const invalidItems = items.filter((item) => !item.type || Number(item.quantity) < 1);
     if (invalidItems.length > 0) {
       alert('제출하기 전에 모든 항목에 대해 종류와 수량을 선택해주세요.');
       return;
