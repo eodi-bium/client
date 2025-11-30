@@ -18,6 +18,7 @@ function App() {
   const getCurrentNav = useCallback(() => {
     const path = location.pathname;
     if (path === '/') return 'map';
+    if (path === '/admin') return 'admin';
     if (path === '/process-qr') return 'admin';
     if (path === '/my') return 'my';
     if (path === '/event-info') return 'event';
@@ -72,7 +73,7 @@ function App() {
         navigate('/event-info');
         break;
       case 'admin':
-        navigate('/process-qr');
+        navigate('/admin');
         break;
       case 'my':
         navigate('/my');
@@ -89,6 +90,7 @@ function App() {
       <Routes>
         <Route path="/" element={<MapPage />} />
         <Route path="/my" element={<MyPage />} />
+        <Route path="/admin" element={<AdminPage />} />
         <Route path="/process-qr" element={<AdminPage />} />
         <Route path="/event-info" element={<EventInfoPage />} />
         <Route path="/redirect/login" element={<LoginRedirectPage />} />
