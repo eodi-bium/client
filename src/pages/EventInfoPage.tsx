@@ -62,7 +62,7 @@ export const EventInfoPage = () => {
   const fetchEventData = async () => {
     try {
       const apiUrl = import.meta.env.VITE_BASE_URL || '';
-      const response = await axios.get<ActiveEventResponse>(`${apiUrl}/event/latest`);
+      const response = await axios.get<ActiveEventResponse>(`${apiUrl}/event/lastest`);
       console.log(response.data);
       setEventData(response.data);
     } catch (error) {
