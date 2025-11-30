@@ -22,6 +22,7 @@ type EventDetail = {
 };
 
 interface ActiveEventResponse {
+  eventId: number;
   giftName: string;
   count: number;
   giftImageUrl: string;
@@ -75,15 +76,15 @@ export const EventInfoPage = () => {
   }, [axiosInstance]);
 
   const fetchUserEventStatus = useCallback(async () => {
+    if (!eventData?.eventId) return;
     try {
-      const response = await axiosInstance.get<UserEventStatus>('/event/status');
+      const response = await axiosInstance.get<UserEventStatus>(`/event/${eventData.eventId}/my`);
       setUserEventStatus(response.data);
-      // Also update current point when fetching status
       setCurrentPoint(response.data.myPoints);
     } catch (error) {
       console.error('Failed to fetch user event status:', error);
     }
-  }, [axiosInstance]);
+  }, [axiosInstance, eventData?.eventId]);
 
   const fetchEventData = useCallback(async () => {
     try {
@@ -100,10 +101,10 @@ export const EventInfoPage = () => {
   }, [fetchEventData]);
 
   useEffect(() => {
-    if (!isLoading && isLoggedIn) {
+    if (!isLoading && isLoggedIn && eventData?.eventId) {
       fetchUserEventStatus();
     }
-  }, [isLoading, isLoggedIn, fetchUserEventStatus]);
+  }, [isLoading, isLoggedIn, eventData?.eventId, fetchUserEventStatus]);
 
   const handleJoinClick = () => {
     setIsModalOpen(true);
@@ -126,7 +127,10 @@ export const EventInfoPage = () => {
 
     try {
       // TODO: Verify the exact endpoint for event participation
-      await axiosInstance.post('/event/participate', { point: points });
+      await axiosInstance.post('/event/join', {
+        eventId: eventData.eventId,
+        point: points,
+      });
       alert('참여가 완료되었습니다!');
       setIsModalOpen(false);
       fetchEventData(); // Refresh event data
