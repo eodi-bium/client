@@ -17,10 +17,12 @@ type EventDetail = {
   label: string;
   value: string;
   valueClassName?: string;
+  icon?: string;
 };
 
 interface ActiveEventResponse {
   giftName: string;
+  count: number;
   gifPictureUrl: string;
   period: {
     startDate: string;
@@ -41,17 +43,14 @@ const clampPercentage = (value: number) => Math.max(0, Math.min(100, value));
 
 const formatNumber = (num: number) => new Intl.NumberFormat('ko-KR').format(num);
 
-const calculateRemainingTime = (endDate: string) => {
-  const end = new Date(endDate).getTime();
-  const now = new Date().getTime();
-  const diff = end - now;
-
-  if (diff <= 0) return '종료됨';
-
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-
-  return `${days}일 ${hours}시간`;
+const formatDateTime = (dateStr: string) => {
+  const date = new Date(dateStr);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${year}.${month}.${day} ${hours}시 ${minutes}분`;
 };
 
 export const EventInfoPage = () => {
@@ -82,7 +81,7 @@ export const EventInfoPage = () => {
       };
     }
 
-    const { period, stats, userStatus } = eventData;
+    const { period, stats, userStatus, count } = eventData;
 
     const pointStatsData: PointStat[] = [
       {
@@ -113,21 +112,22 @@ export const EventInfoPage = () => {
 
     const eventDetailsData: EventDetail[] = [
       {
+        id: 'count',
+        label: '상품 개수',
+        value: `${formatNumber(count)} 개`,
+        icon: 'fas fa-gift',
+      },
+      {
         id: 'period',
         label: '행사 기간',
-        value: `${period.startDate.split('T')[0].replace(/-/g, '.')} - ${period.endDate.split('T')[0].replace(/-/g, '.')}`,
+        value: `${formatDateTime(period.startDate)} - ${formatDateTime(period.endDate)}`,
+        icon: 'fas fa-calendar-alt',
       },
-      { id: 'minPoint', label: '최소 참여 포인트', value: '100 P' }, // 고정값 혹은 API에 추가 필요
       {
         id: 'announcement',
         label: '당첨자 발표',
-        value: period.announcementDate.split('T')[0].replace(/-/g, '.'),
-      },
-      {
-        id: 'remainingTime',
-        label: '남은 시간',
-        value: calculateRemainingTime(period.endDate),
-        valueClassName: 'text-orange-500',
+        value: formatDateTime(period.announcementDate),
+        icon: 'fas fa-bullhorn',
       },
     ];
 
@@ -177,13 +177,16 @@ export const EventInfoPage = () => {
                 loading="lazy"
               />
             </div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">{eventData.giftName}</h2>
-            <div className="flex items-center text-sm text-gray-500">
-              <i className="fas fa-calendar-alt mr-1" aria-hidden />
-              <span>
-                {eventData.period.startDate.split('T')[0].replace(/-/g, '.')} ~{' '}
-                {eventData.period.endDate.split('T')[0].replace(/-/g, '.')}
-              </span>
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">{eventData.giftName}</h2>
+            <div className="flex flex-col items-center gap-2 text-sm text-gray-500">
+              {eventDetails.map((detail) => (
+                <div key={detail.id} className="flex items-center gap-2">
+                  {detail.icon && <i className={`${detail.icon} w-4 text-center`} aria-hidden />}
+                  <span className={detail.valueClassName}>
+                    {detail.label} : {detail.value}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         </section>
@@ -233,20 +236,6 @@ export const EventInfoPage = () => {
             <span>0%</span>
             <span>50%</span>
             <span>100%</span>
-          </div>
-        </section>
-
-        <section className="bg-white rounded-2xl p-6 shadow-sm">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">행사 정보</h3>
-          <div className="space-y-3">
-            {eventDetails.map((detail) => (
-              <div key={detail.id} className="flex justify-between">
-                <span className="text-gray-600">{detail.label}</span>
-                <span className={`text-gray-900 font-medium ${detail.valueClassName ?? ''}`}>
-                  {detail.value}
-                </span>
-              </div>
-            ))}
           </div>
         </section>
       </main>
