@@ -142,7 +142,7 @@ const CreditPointsForm = ({
 interface EventFormData {
   giftName: string;
   count: string;
-  imageUrl: string;
+  giftImageUrl: string;
   startDate: string;
   endDate: string;
   announcementDate: string;
@@ -173,7 +173,7 @@ const AddEventForm = () => {
   const [formData, setFormData] = useState<EventFormData>(() => ({
     giftName: '',
     count: '',
-    imageUrl: '',
+    giftImageUrl: '',
     ...getDefaultEventDates(),
   }));
 
@@ -188,7 +188,7 @@ const AddEventForm = () => {
       const payload = {
         giftName: formData.giftName,
         count: Number(formData.count),
-        gifPictureUrl: formData.imageUrl,
+        giftImageUrl: formData.giftImageUrl,
         startDate: new Date(formData.startDate).toISOString(),
         endDate: new Date(formData.endDate).toISOString(),
         announcementDate: new Date(formData.announcementDate).toISOString(),
@@ -199,7 +199,7 @@ const AddEventForm = () => {
       setFormData({
         giftName: '',
         count: '',
-        imageUrl: '',
+        giftImageUrl: '',
         ...getDefaultEventDates(),
       });
     } catch (error) {
@@ -249,8 +249,8 @@ const AddEventForm = () => {
           <label className="block text-sm font-semibold text-slate-700">이미지 URL</label>
           <input
             type="url"
-            name="imageUrl"
-            value={formData.imageUrl}
+            name="giftImageUrl"
+            value={formData.giftImageUrl}
             onChange={handleChange}
             required
             placeholder="https://example.com/image.jpg"

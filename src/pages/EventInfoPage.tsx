@@ -23,7 +23,7 @@ type EventDetail = {
 interface ActiveEventResponse {
   giftName: string;
   count: number;
-  gifPictureUrl: string;
+  giftImageUrl: string;
   period: {
     startDate: string;
     endDate: string;
@@ -63,6 +63,7 @@ export const EventInfoPage = () => {
     try {
       const apiUrl = import.meta.env.VITE_BASE_URL || '';
       const response = await axios.get<ActiveEventResponse>(`${apiUrl}/event/latest`);
+      console.log(response.data);
       setEventData(response.data);
     } catch (error) {
       console.error('Failed to fetch event data:', error);
@@ -204,7 +205,7 @@ export const EventInfoPage = () => {
           <div className="flex flex-col items-center text-center">
             <div className="w-48 h-32 mb-4 overflow-hidden rounded-xl">
               <img
-                src={eventData.gifPictureUrl}
+                src={eventData.giftImageUrl}
                 alt={eventData.giftName}
                 className="w-full h-full object-cover object-top"
                 loading="lazy"
