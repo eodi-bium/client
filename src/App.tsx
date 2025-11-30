@@ -32,6 +32,13 @@ function App() {
     setActiveNav(getCurrentNav());
   }, [getCurrentNav]);
 
+  // 페이지 이동 시 현재 경로 저장 (로그인 리다이렉트용)
+  useEffect(() => {
+    if (location.pathname !== '/redirect/login') {
+      sessionStorage.setItem('prevPath', location.pathname);
+    }
+  }, [location.pathname]);
+
   // 인증 상태에 따른 네비게이션 아이템 결정
   const getAuthNavItem = (): NavItem => {
     if (!isLoggedIn) {

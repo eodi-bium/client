@@ -281,7 +281,7 @@ export const EventInfoPage = () => {
               : 'bg-orange-500 text-white active:bg-orange-600 shadow-orange-200'
           }`}
         >
-          {!isLoggedIn ? '로그인하기' : '이벤트 참여하기'}
+          {!isLoggedIn ? '로그인해서 참여하기' : '이벤트 참여하기'}
         </button>
 
         <section className="bg-white rounded-2xl p-6 shadow-sm">
