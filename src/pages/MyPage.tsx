@@ -191,27 +191,19 @@ export const MyPage = () => {
           <div className="w-24 h-1 bg-green-500 mx-auto rounded-full" />
         </section>
 
-        {/* 1. 상단: 사용자 정보 및 QR 코드 (+ 로그아웃 버튼) */}
-        <section className="bg-white rounded-2xl shadow-lg p-8 mb-8 border border-gray-100 relative">
-          {/* 로그아웃 버튼 배치 (우측 상단) */}
-          <button
-            onClick={handleLogout}
-            className="absolute top-6 right-6 text-gray-400 hover:text-red-500 transition-colors duration-200 flex items-center gap-1 text-sm font-medium"
-          >
-            <i className="fas fa-sign-out-alt"></i>
-            로그아웃
-          </button>
-
-          <div className="flex items-center justify-center mb-6">
+        <section className="bg-white rounded-2xl shadow-lg p-8 mb-3 border border-gray-100">
+          <div className="flex items-center justify-center">
             <div className="w-20 h-20 bg-gradient-to-r from-green-400 to-blue-500 rounded-full flex items-center justify-center mr-6">
               <i className="fas fa-user text-white text-2xl" />
             </div>
+
             <div>
               <h2 className="text-2xl font-semibold text-gray-800 mb-2">내 닉네임</h2>
               <p className="text-xl text-gray-600 font-medium">
                 {memberInfo?.nickname || '닉네임 없음'}
               </p>
             </div>
+
             <div className="ml-8 p-2 bg-white rounded-xl shadow-sm border border-gray-100">
               {memberId && (
                 <QRCodeCanvas
@@ -222,6 +214,16 @@ export const MyPage = () => {
             </div>
           </div>
         </section>
+
+        <div className="flex justify-end mb-8 px-1">
+          <button
+            onClick={handleLogout}
+            className="text-gray-500 hover:text-red-500 hover:bg-white/50 px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1.5 text-sm font-medium"
+          >
+            <i className="fas fa-sign-out-alt"></i>
+            로그아웃
+          </button>
+        </div>
 
         {/* 2. 중단: 포인트 및 분리수거 현황 */}
         <section className="mb-8">
