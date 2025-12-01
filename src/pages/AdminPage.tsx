@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAxios } from '../hooks/useAxios';
+import { useAuth } from '../context/AuthContext';
 import { adminItemOptions } from '../data/admin';
 
 interface Item {
@@ -9,22 +10,46 @@ interface Item {
   quantity: number | string;
 }
 
-const AdminHeader = () => (
-  <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div className="flex items-center justify-between h-16">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-teal-500 to-cyan-600 rounded-lg flex items-center justify-center">
-            <i className="ri-admin-line text-white text-xl"></i>
+const AdminHeader = () => {
+  const navigate = useNavigate();
+  const { logout } = useAuth();
+  const axios = useAxios();
+
+  const handleLogout = async () => {
+    try {
+      await axios.post('/member/logout');
+    } catch (error) {
+      console.error('Logout failed:', error);
+    } finally {
+      logout();
+      navigate('/');
+    }
+  };
+
+  return (
+    <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-teal-500 to-cyan-600 rounded-lg flex items-center justify-center">
+              <i className="ri-admin-line text-white text-xl"></i>
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-slate-800">관리자 페이지</h1>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-slate-800">관리자 페이지</h1>
-          </div>
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2 rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-200 hover:text-slate-900"
+          >
+            <i className="ri-logout-box-r-line"></i>
+            로그아웃
+          </button>
         </div>
       </div>
-    </div>
-  </header>
-);
+    </header>
+  );
+};
 
 type CreditPointsFormProps = {
   userId: string;
