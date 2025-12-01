@@ -39,6 +39,12 @@ const getEventBadgeStyle = (eventName: string) => {
   return 'bg-gray-50 text-gray-700';
 };
 
+const recyclingTypeLabels: Record<string, string> = {
+  BATTERY: '폐배터리',
+  LIGHT: '형광등',
+  CLOTHES: '의류',
+};
+
 // 날짜 포맷팅 함수 (2025년 12월 01일 00시 00분)
 const formatDate = (dateString: string) => {
   if (!dateString) return '';
@@ -237,15 +243,15 @@ export const MyPage = () => {
               </h4>
               <div className="grid grid-cols-2 gap-3">
                 {memberInfo?.records && memberInfo.records.length > 0 ? (
-                  memberInfo.records.map((record) => (
-                    <div key={record.recyclingType} className="bg-gray-50 rounded-lg p-3">
+                  memberInfo.records.map((record, index) => (
+                    <div key={index} className="bg-gray-50 rounded-lg p-3">
                       <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center">
                           <i
                             className={`${getTypeIcon(record.recyclingType)} text-green-600 mr-2`}
                           />
                           <span className="text-sm font-medium text-gray-700">
-                            {record.recyclingType}
+                            {recyclingTypeLabels[record.recyclingType] || record.recyclingType}
                           </span>
                         </div>
                       </div>
