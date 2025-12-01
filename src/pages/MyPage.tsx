@@ -4,37 +4,69 @@ import { recyclingTypeIconMap } from '../data/myPage';
 import { useAuth } from '../context/AuthContext';
 import { useAxios } from '../hooks/useAxios';
 
-// API 응답 타입 정의
+// ----------------------------------------------------------------------
+// 1. API 응답 타입 정의
+// ----------------------------------------------------------------------
+
 interface RecyclingRecord {
   recyclingType: string;
   count: number;
   point: number;
 }
 
+interface EventRecord {
+  name: string;
+  giftCount: number;
+  startDate: string; // Java LocalDateTime String (e.g., "2025-12-01T10:00:00")
+  endDate: string;
+  announceDate: string;
+  myPoint: number;
+}
+
 interface MemberInfoResponse {
   nickname: string;
   records: RecyclingRecord[];
+  eventRecords: EventRecord[];
 }
 
-// 아이콘 가져오기 헬퍼 함수
+// ----------------------------------------------------------------------
+// 2. 헬퍼 함수들
+// ----------------------------------------------------------------------
+
 const getTypeIcon = (type: string) => recyclingTypeIconMap[type] ?? 'fas fa-trash-alt';
 
-// JWT에서 memberId 추출하는 함수
+const getEventBadgeStyle = (eventName: string) => {
+  return 'bg-gray-50 text-gray-700';
+};
+
+// 날짜 포맷팅 함수 (2025년 12월 01일 00시 00분)
+const formatDate = (dateString: string) => {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+
+  // 유효하지 않은 날짜 처리
+  if (isNaN(date.getTime())) return dateString;
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+
+  return `${year}년 ${month}월 ${day}일 ${hours}시 ${minutes}분`;
+};
+
 const getMemberIdFromToken = (token: string): string => {
   if (!token) return '';
-
   try {
     const base64Url = token.split('.')[1];
     if (!base64Url) return '';
-
     const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
     const jsonPayload = decodeURIComponent(
       window
         .atob(base64)
         .split('')
-        .map(function (c) {
-          return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-        })
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
         .join('')
     );
     const payload = JSON.parse(jsonPayload);
@@ -45,11 +77,13 @@ const getMemberIdFromToken = (token: string): string => {
   }
 };
 
-export const MyPage = () => {
-  // 1. AuthContext 상태 가져오기
-  const { accessToken, isLoggedIn, isLoading: isAuthLoading } = useAuth();
+// ----------------------------------------------------------------------
+// 3. 컴포넌트 구현
+// ----------------------------------------------------------------------
 
-  // 2. useAxios 훅 사용 (헤더, baseURL 처리가 된 axios 인스턴스)
+export const MyPage = () => {
+  // logout 함수를 AuthContext에서 가져온다고 가정
+  const { accessToken, isLoggedIn, isLoading: isAuthLoading, logout } = useAuth();
   const axios = useAxios();
 
   const [memberInfo, setMemberInfo] = useState<MemberInfoResponse | null>(null);
@@ -57,13 +91,8 @@ export const MyPage = () => {
   const [isDataLoading, setIsDataLoading] = useState<boolean>(false);
 
   useEffect(() => {
-    // 인증 로딩 중이면 대기
     if (isAuthLoading) return;
-
-    // 로그인이 안 되어 있거나 토큰이 없으면 중단
-    if (!isLoggedIn || !accessToken) {
-      return;
-    }
+    if (!isLoggedIn || !accessToken) return;
 
     const fetchData = async () => {
       setIsDataLoading(true);
@@ -73,8 +102,6 @@ export const MyPage = () => {
 
         const response = await axios.get('/memberInfo');
 
-        console.log('MemberInfo Response:', response.data);
-
         if (response.data && response.data.body) {
           setMemberInfo(response.data.body);
         } else {
@@ -82,9 +109,6 @@ export const MyPage = () => {
         }
       } catch (error: any) {
         console.error('회원 정보 요청 실패:', error);
-        if (error.response) {
-          console.error('Status:', error.response.status);
-        }
       } finally {
         setIsDataLoading(false);
       }
@@ -93,19 +117,31 @@ export const MyPage = () => {
     fetchData();
   }, [accessToken, isLoggedIn, isAuthLoading, axios]);
 
-  // 총 포인트 계산
-  const totalPoints = useMemo(() => {
+  const totalRecyclingPoints = useMemo(() => {
     if (!memberInfo || !memberInfo.records) return 0;
     return memberInfo.records.reduce((acc, record) => acc + record.point, 0);
   }, [memberInfo]);
 
-  // 로그인 버튼 핸들러
   const handleLoginClick = () => {
     const apiUrl = import.meta.env.VITE_BASE_URL;
     window.location.href = `${apiUrl}/oauth2/authorization/kakao`;
   };
 
-  // 로딩 화면
+  // 로그아웃 핸들러 추가
+  const handleLogout = async () => {
+    if (!window.confirm('정말 로그아웃 하시겠습니까?')) return;
+
+    try {
+      await axios.post('/member/logout'); // 1. 서버 로그아웃 요청
+    } catch (error) {
+      console.error('로그아웃 요청 실패:', error);
+      // 서버 요청 실패하더라도 클라이언트 로그아웃은 진행
+    } finally {
+      logout(); // 2. 클라이언트 상태 초기화 (AuthContext)
+      window.location.href = '/'; // 3. 메인으로 리다이렉트
+    }
+  };
+
   if (isAuthLoading || isDataLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-blue-50">
@@ -116,7 +152,6 @@ export const MyPage = () => {
     );
   }
 
-  // 로그인 필요 화면
   if (!isLoggedIn) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-green-50 to-blue-50 px-4">
@@ -126,9 +161,7 @@ export const MyPage = () => {
           </div>
           <h2 className="text-2xl font-bold text-gray-800 mb-2">로그인이 필요합니다</h2>
           <p className="text-gray-600 mb-6">
-            마이페이지를 이용하시려면
-            <br />
-            로그인을 진행해주세요.
+            마이페이지를 이용하시려면 <br /> 로그인을 진행해주세요.
           </p>
           <button
             onClick={handleLoginClick}
@@ -142,17 +175,27 @@ export const MyPage = () => {
     );
   }
 
-  // 정상 렌더링 화면
+  const hasEventHistory = memberInfo?.eventRecords && memberInfo.eventRecords.length > 0;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50">
       <div className="max-w-4xl mx-auto px-6 py-8">
-        <section className="text-center mb-8">
+        <section className="text-center mb-8 relative">
           <h1 className="text-4xl font-bold text-gray-800 mb-2">마이페이지</h1>
           <div className="w-24 h-1 bg-green-500 mx-auto rounded-full" />
         </section>
 
-        {/* 사용자 정보 및 QR 코드 섹션 */}
-        <section className="bg-white rounded-2xl shadow-lg p-8 mb-8 border border-gray-100">
+        {/* 1. 상단: 사용자 정보 및 QR 코드 (+ 로그아웃 버튼) */}
+        <section className="bg-white rounded-2xl shadow-lg p-8 mb-8 border border-gray-100 relative">
+          {/* 로그아웃 버튼 배치 (우측 상단) */}
+          <button
+            onClick={handleLogout}
+            className="absolute top-6 right-6 text-gray-400 hover:text-red-500 transition-colors duration-200 flex items-center gap-1 text-sm font-medium"
+          >
+            <i className="fas fa-sign-out-alt"></i>
+            로그아웃
+          </button>
+
           <div className="flex items-center justify-center mb-6">
             <div className="w-20 h-20 bg-gradient-to-r from-green-400 to-blue-500 rounded-full flex items-center justify-center mr-6">
               <i className="fas fa-user text-white text-2xl" />
@@ -174,23 +217,23 @@ export const MyPage = () => {
           </div>
         </section>
 
-        {/* 포인트 및 분리수거 현황 섹션 */}
+        {/* 2. 중단: 포인트 및 분리수거 현황 */}
         <section className="mb-8">
           <div className="bg-white rounded-2xl shadow-lg p-8 border border-gray-100">
             <div className="text-center mb-6">
               <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full mb-4">
                 <i className="fas fa-coins text-white text-2xl" />
               </div>
-              <h3 className="text-2xl font-semibold text-gray-800 mb-3">총 응모 포인트</h3>
+              <h3 className="text-2xl font-semibold text-gray-800 mb-3">총 획득 포인트</h3>
               <div className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-green-500 to-blue-600 mb-2">
-                {totalPoints.toLocaleString()}
+                {totalRecyclingPoints.toLocaleString()}
               </div>
               <p className="text-gray-500 text-lg">포인트</p>
             </div>
 
             <div className="border-t border-gray-200 pt-6">
               <h4 className="text-lg font-semibold text-gray-700 mb-4 text-center">
-                분리수거 세부 현황
+                분리수거 기록 현황
               </h4>
               <div className="grid grid-cols-2 gap-3">
                 {memberInfo?.records && memberInfo.records.length > 0 ? (
@@ -219,6 +262,78 @@ export const MyPage = () => {
                 )}
               </div>
             </div>
+          </div>
+        </section>
+
+        {/* 3. 하단: 이벤트 참여 기록 */}
+        <section className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+          <div className="bg-gradient-to-r from-green-500 to-blue-600 px-8 py-6">
+            <h3 className="text-2xl font-semibold text-white flex items-center">
+              <i className="fas fa-history mr-3" />
+              이벤트 참여 내역
+            </h3>
+          </div>
+
+          <div className="p-8">
+            {!hasEventHistory ? (
+              <div className="text-center py-12">
+                <i className="fas fa-inbox text-gray-300 text-6xl mb-4" />
+                <p className="text-gray-500 text-lg">참여한 이벤트가 없습니다.</p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {memberInfo!.eventRecords.map((event, index) => (
+                  <article
+                    key={`${event.name}-${index}`}
+                    className="border border-gray-200 rounded-xl overflow-hidden"
+                  >
+                    {/* 카드 헤더: 상세 보기 버튼 삭제됨 */}
+                    <header
+                      className={`px-6 py-4 ${getEventBadgeStyle(
+                        event.name
+                      )} border-b border-gray-200`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                          <i className="fas fa-gift mr-3 text-red-400" />
+                          <h4 className="text-lg font-semibold">{event.name}</h4>
+                        </div>
+                        {/* 상세 보기 버튼 삭제 완료 */}
+                      </div>
+                    </header>
+
+                    <div className="bg-white p-6">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                          <div className="w-12 h-12 bg-gradient-to-r from-purple-400 to-pink-500 rounded-full flex items-center justify-center mr-4">
+                            <i className="fas fa-ticket-alt text-white text-lg" />
+                          </div>
+                          <div>
+                            <h5 className="text-lg font-semibold text-gray-800 mb-1">응모 완료</h5>
+                            {/* 날짜 포맷 적용 */}
+                            <p className="text-sm text-gray-500">
+                              기간: {formatDate(event.startDate)} ~ {formatDate(event.endDate)}
+                            </p>
+                            <p className="text-sm text-gray-400">
+                              발표: {formatDate(event.announceDate)}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <div className="text-lg font-semibold text-gray-800 mb-1">
+                            상품 수량: {event.giftCount}개
+                          </div>
+                          <div className="text-blue-600 font-medium">
+                            사용 포인트: {event.myPoint} P
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
           </div>
         </section>
 
