@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
-import { recyclingTypeIconMap } from '../data/myPage';
+import { RECYCLING_CONFIG } from '../constants/categories';
+import type { RecyclingCode } from '../constants/categories';
 import { useAuth } from '../context/AuthContext';
 import { useAxios } from '../hooks/useAxios';
 
@@ -33,16 +34,11 @@ interface MemberInfoResponse {
 // 2. 헬퍼 함수들
 // ----------------------------------------------------------------------
 
-const getTypeIcon = (type: string) => recyclingTypeIconMap[type] ?? 'fas fa-trash-alt';
+const getTypeIcon = (type: string) =>
+  RECYCLING_CONFIG[type as RecyclingCode]?.icon ?? 'fas fa-trash-alt';
 
 const getEventBadgeStyle = (eventName: string) => {
   return 'bg-gray-50 text-gray-700';
-};
-
-const recyclingTypeLabels: Record<string, string> = {
-  BATTERY: '폐배터리',
-  LIGHT: '형광등',
-  CLOTHES: '의류',
 };
 
 // 날짜 포맷팅 함수 (2025년 12월 01일 00시 00분)
@@ -250,9 +246,10 @@ export const MyPage = () => {
                           <i
                             className={`${getTypeIcon(record.recyclingType)} text-green-600 mr-2`}
                           />
-                          <span className="text-sm font-medium text-gray-700">
-                            {recyclingTypeLabels[record.recyclingType] || record.recyclingType}
-                          </span>
+                        <span className="text-sm font-medium text-gray-700">
+                          {RECYCLING_CONFIG[record.recyclingType as RecyclingCode]?.label ||
+                            record.recyclingType}
+                        </span>
                         </div>
                       </div>
                       <div className="text-right">
