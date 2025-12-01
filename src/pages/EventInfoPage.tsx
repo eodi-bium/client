@@ -101,7 +101,7 @@ export const EventInfoPage = () => {
       // [수정 2] 에러 발생 시 경고창 표시 후 이전 페이지로 이동
       console.error('Failed to fetch event data:', error);
       alert('현재 진행중인 행사가 없습니다.');
-      navigate(-1);
+      navigate('/');
     }
   }, [axiosInstance, navigate]);
 

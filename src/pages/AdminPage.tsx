@@ -1,4 +1,4 @@
-import { type FormEvent, useState, useEffect } from 'react'; // useEffect 추가
+import { type FormEvent, useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAxios } from '../hooks/useAxios';
 import { useAuth } from '../context/AuthContext';
@@ -22,7 +22,7 @@ interface EventFormData {
   announcementDate: string;
 }
 
-// [NEW] 1. 최신 이벤트 조회 응답 타입
+// [UPDATED] 1. 최신 이벤트 조회 응답 타입 (winner 필드 추가)
 interface EventResponse {
   eventId: number;
   giftName: string;
@@ -37,11 +37,7 @@ interface EventResponse {
     totalAccumulatedPoints: number;
     totalParticipants: number;
   };
-}
-
-// [NEW] 2. 추첨 결과 응답 타입
-interface DrawResultResponse {
-  winnerId: string;
+  winner?: string | null; // 당첨자 ID (있을 수도, 없을 수도 있음)
 }
 
 // ----------------------------------------------------------------------
@@ -374,12 +370,18 @@ const DrawWinnerForm = () => {
   useEffect(() => {
     const fetchLatestEvent = async () => {
       try {
-        const response = await axios.get('/event/lastest'); // API 명세에 따른 오타 그대로 사용 (/lastest)
+        const response = await axios.get('/event/lastest');
         console.log('Latest Event Response:', response.data);
 
-        // 응답 래퍼 처리 (response.data.body 또는 response.data)
         const eventData = response.data.body || response.data;
         setLatestEvent(eventData);
+
+        // [핵심 변경] 이미 winner가 있으면 state에 저장하여 UI에 반영
+        if (eventData.winner) {
+          setWinnerInfo(eventData.winner);
+        } else {
+          setWinnerInfo(null);
+        }
       } catch (error) {
         console.error('Failed to fetch latest event:', error);
       }
@@ -397,21 +399,20 @@ const DrawWinnerForm = () => {
 
     setIsLoading(true);
     try {
-      // 명세에 따른 엔드포인트: /draw/start
       const response = await axios.post('/admin/draw/start', {
         eventId: latestEvent.eventId,
       });
 
       console.log('Draw Result:', response.data);
-
       const resultData = response.data.body || response.data;
-      setWinnerInfo(resultData.winnerId);
 
+      // 추첨 성공 시 당첨자 업데이트
+      setWinnerInfo(resultData.winnerId);
       alert('추첨이 성공적으로 완료되었습니다!');
     } catch (error: any) {
       console.error('Draw failed:', error);
       alert('추첨에 실패했습니다. (이미 추첨되었거나 서버 오류)');
-      setWinnerInfo(null);
+      // 에러 발생 시 기존 winner 정보가 있으면 유지, 없으면 null (혹은 다시 fetch)
     } finally {
       setIsLoading(false);
     }
@@ -497,43 +498,42 @@ const DrawWinnerForm = () => {
             </div>
           </div>
 
-          {/* 추첨 버튼 */}
-          <button
-            onClick={handleDraw}
-            disabled={isLoading || !!winnerInfo}
-            className={`w-full rounded-lg px-4 py-4 text-sm font-bold text-white shadow-lg transition focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 flex items-center justify-center gap-2
-              ${
-                isLoading || winnerInfo
-                  ? 'bg-slate-300 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700'
-              }`}
-          >
-            {isLoading ? (
-              <>
-                <i className="ri-loader-4-line animate-spin text-lg"></i>
-                추첨 진행 중...
-              </>
-            ) : winnerInfo ? (
-              <>
-                <i className="ri-check-double-line text-lg"></i>
-                추첨 완료
-              </>
-            ) : (
-              <>
-                <i className="ri-magic-line text-lg"></i>이 행사 추첨 시작하기
-              </>
-            )}
-          </button>
-
-          {/* 추첨 결과 표시 */}
-          {winnerInfo && (
+          {/* [UI 분기 처리] winnerInfo가 있으면 당첨자 카드 표시, 없으면 추첨 버튼 표시 */}
+          {winnerInfo ? (
             <div className="p-6 bg-indigo-50 border border-indigo-200 rounded-xl text-center animate-fade-in-up">
+              <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm text-indigo-500">
+                <i className="ri-medal-line text-3xl"></i>
+              </div>
               <h4 className="text-sm font-bold text-indigo-500 mb-2 tracking-wide uppercase">
-                Winner
+                WINNER (추첨 완료)
               </h4>
-              <div className="text-3xl font-extrabold text-indigo-900 break-all">{winnerInfo}</div>
-              <p className="text-sm text-indigo-400 mt-2">당첨자 ID가 확정되었습니다.</p>
+              <div className="text-3xl font-extrabold text-indigo-900 break-all mb-1">
+                {winnerInfo}
+              </div>
+              <p className="text-sm text-indigo-400">이 이벤트는 이미 당첨자가 확정되었습니다.</p>
             </div>
+          ) : (
+            <button
+              onClick={handleDraw}
+              disabled={isLoading}
+              className={`w-full rounded-lg px-4 py-4 text-sm font-bold text-white shadow-lg transition focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 flex items-center justify-center gap-2
+                ${
+                  isLoading
+                    ? 'bg-slate-300 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700'
+                }`}
+            >
+              {isLoading ? (
+                <>
+                  <i className="ri-loader-4-line animate-spin text-lg"></i>
+                  추첨 진행 중...
+                </>
+              ) : (
+                <>
+                  <i className="ri-magic-line text-lg"></i>이 행사 추첨 시작하기
+                </>
+              )}
+            </button>
           )}
         </div>
       )}
