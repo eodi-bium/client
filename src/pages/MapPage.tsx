@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import { Header, CategoryFilter, MapView } from '../components';
-import type { Category } from '../types';
+import { RECYCLING_CATEGORIES } from '../constants/categories';
+import type { Category, DeviceType } from '../types';
 
 export const MapPage = () => {
   const [activeCategory, setActiveCategory] = useState('battery');
-  // 카테고리 데이터 (UI 표시용 정적 데이터이므로 유지)
-  const categories: Category[] = [
-    { id: 'battery', label: '배터리', icon: 'fas fa-battery-half', type: 'battery' },
-    { id: 'light', label: '형광등', icon: 'fas fa-lightbulb', type: 'light' },
-    { id: 'clothes', label: '의류', icon: 'fas fa-tshirt', type: 'clothes' },
-  ];
+  // 카테고리 데이터 (통합 상수에서 생성)
+  const categories: Category[] = RECYCLING_CATEGORIES.map((item) => ({
+    id: item.id,
+    label: item.mapLabel,
+    icon: item.icon,
+    type: item.id as DeviceType,
+  }));
 
   const handleBackClick = () => {
     console.log('뒤로가기 클릭');
