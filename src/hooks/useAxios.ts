@@ -24,20 +24,13 @@ export const useAxios = (): AxiosInstance => {
     }
   }, [accessToken, instance]);
 
-  // 에러 핸들링 인터셉터 설정
   useEffect(() => {
     const interceptor = instance.interceptors.response.use(
       (response) => response,
       (error: AxiosError<{ message?: string }>) => {
         if (error.response) {
-          const { status, data } = error.response;
-
-          // 4xx, 5xx 에러인 경우
-          if (status >= 400 && status < 600) {
-            if (data?.message) {
-              alert(data.message);
-            }
-          }
+          const { message } = error.response.data;
+          console.log(message);
         }
         return Promise.reject(error);
       }

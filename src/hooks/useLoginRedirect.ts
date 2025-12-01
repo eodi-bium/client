@@ -24,7 +24,15 @@ export const useLoginRedirect = () => {
         if (accessToken) {
           // Context를 통해 메모리에 토큰 저장 및 로그인 처리
           login(accessToken);
-          navigate('/', { replace: true });
+
+          // 저장된 이전 경로 확인
+          const prevPath = sessionStorage.getItem('prevPath');
+          console.log(prevPath);
+          if (prevPath) {
+            navigate(prevPath, { replace: true });
+          } else {
+            navigate('/', { replace: true });
+          }
         } else {
           console.error('AccessToken not found in response body');
           navigate('/');
