@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { useAxios } from '../hooks/useAxios';
+import { useAuth } from '../context/AuthContext';
 
 type PointStat = {
   id: string;
@@ -21,6 +22,7 @@ type EventDetail = {
 };
 
 interface ActiveEventResponse {
+  eventId: number;
   giftName: string;
   count: number;
   giftImageUrl: string;
@@ -33,10 +35,11 @@ interface ActiveEventResponse {
     totalAccumulatedPoints: number;
     totalParticipants: number;
   };
-  userStatus: {
-    myPoints: number;
-    winProbability: number;
-  };
+}
+
+interface UserEventStatus {
+  myPoints: number;
+  winProbability: number;
 }
 
 const clampPercentage = (value: number) => Math.max(0, Math.min(100, value));
@@ -55,28 +58,58 @@ const formatDateTime = (dateStr: string) => {
 
 export const EventInfoPage = () => {
   const navigate = useNavigate();
+  const axiosInstance = useAxios();
+  const { isLoggedIn, isLoading } = useAuth();
   const [eventData, setEventData] = useState<ActiveEventResponse | null>(null);
+  const [userEventStatus, setUserEventStatus] = useState<UserEventStatus | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [betPoint, setBetPoint] = useState<string>('');
+  const [currentPoint, setCurrentPoint] = useState<number>(0);
 
-  const fetchEventData = async () => {
+  const fetchUserPoints = useCallback(async () => {
     try {
-      const apiUrl = import.meta.env.VITE_BASE_URL || '';
-      const response = await axios.get<ActiveEventResponse>(`${apiUrl}/event/lastest`);
+      const response = await axiosInstance.get<{ point: number }>('/event/point');
+      setCurrentPoint(response.data.point);
+    } catch (error) {
+      console.error('Failed to fetch user points:', error);
+    }
+  }, [axiosInstance]);
+
+  const fetchUserEventStatus = useCallback(async () => {
+    if (!eventData?.eventId) return;
+    try {
+      const response = await axiosInstance.get<UserEventStatus>(`/event/${eventData.eventId}/my`);
+      setUserEventStatus(response.data);
+      setCurrentPoint(response.data.myPoints);
+    } catch (error) {
+      console.error('Failed to fetch user event status:', error);
+    }
+  }, [axiosInstance, eventData?.eventId]);
+
+  const fetchEventData = useCallback(async () => {
+    try {
+      const response = await axiosInstance.get<ActiveEventResponse>('/event/lastest');
       console.log(response.data);
       setEventData(response.data);
     } catch (error) {
       console.error('Failed to fetch event data:', error);
     }
-  };
+  }, [axiosInstance]);
 
   useEffect(() => {
     fetchEventData();
-  }, []);
+  }, [fetchEventData]);
+
+  useEffect(() => {
+    if (!isLoading && isLoggedIn && eventData?.eventId) {
+      fetchUserEventStatus();
+    }
+  }, [isLoading, isLoggedIn, eventData?.eventId, fetchUserEventStatus]);
 
   const handleJoinClick = () => {
     setIsModalOpen(true);
     setBetPoint('');
+    fetchUserPoints();
   };
 
   const handleJoinSubmit = async () => {
@@ -87,18 +120,21 @@ export const EventInfoPage = () => {
       alert('1포인트 이상 입력해주세요.');
       return;
     }
-    if (points > eventData.userStatus.myPoints) {
+    if (points > currentPoint) {
       alert('보유 포인트보다 많이 베팅할 수 없습니다.');
       return;
     }
 
     try {
-      const apiUrl = import.meta.env.VITE_BASE_URL || '';
       // TODO: Verify the exact endpoint for event participation
-      await axios.post(`${apiUrl}/event/participate`, { point: points });
+      await axiosInstance.post('/event/join', {
+        eventId: eventData.eventId,
+        point: points,
+      });
       alert('참여가 완료되었습니다!');
       setIsModalOpen(false);
-      fetchEventData(); // Refresh data
+      fetchEventData(); // Refresh event data
+      fetchUserEventStatus(); // Refresh user points and probability
     } catch (error) {
       console.error('Failed to join event:', error);
       alert('참여 처리에 실패했습니다.');
@@ -115,17 +151,21 @@ export const EventInfoPage = () => {
       };
     }
 
-    const { period, stats, userStatus, count } = eventData;
+    const { period, stats, count } = eventData;
 
     const pointStatsData: PointStat[] = [
-      {
-        id: 'myPoints',
-        label: '내 보유 포인트',
-        value: `${formatNumber(userStatus.myPoints)} P`,
-        icon: 'fas fa-user',
-        containerClassName: 'bg-blue-50',
-        iconClassName: 'bg-blue-500',
-      },
+      ...(isLoggedIn && userEventStatus
+        ? [
+            {
+              id: 'myPoints',
+              label: '내 사용 포인트',
+              value: `${formatNumber(userEventStatus.myPoints)} P`,
+              icon: 'fas fa-user',
+              containerClassName: 'bg-blue-50',
+              iconClassName: 'bg-blue-500',
+            },
+          ]
+        : []),
       {
         id: 'totalPoints',
         label: '총 모인 포인트',
@@ -165,16 +205,23 @@ export const EventInfoPage = () => {
       },
     ];
 
+    const winProbability = userEventStatus ? userEventStatus.winProbability : 0;
+
     return {
       pointStats: pointStatsData,
       eventDetails: eventDetailsData,
-      progressWidth: `${clampPercentage(userStatus.winProbability)}%`,
-      probabilityLabel: `${userStatus.winProbability}%`,
+      progressWidth: `${clampPercentage(winProbability)}%`,
+      probabilityLabel: `${winProbability}%`,
     };
-  }, [eventData]);
+  }, [eventData, userEventStatus, isLoggedIn]);
 
   const handleBackClick = () => {
     navigate(-1);
+  };
+
+  const handleLoginClick = () => {
+    const apiUrl = import.meta.env.VITE_BASE_URL;
+    window.location.href = `${apiUrl}/oauth2/authorization/kakao`;
   };
 
   if (!eventData) {
@@ -227,10 +274,14 @@ export const EventInfoPage = () => {
 
         <button
           type="button"
-          onClick={handleJoinClick}
-          className="w-full bg-orange-500 text-white font-bold text-lg py-4 rounded-xl active:bg-orange-600 transition-colors shadow-orange-200 shadow-lg"
+          onClick={isLoggedIn ? handleJoinClick : handleLoginClick}
+          className={`w-full font-bold text-lg py-4 rounded-xl transition-colors shadow-lg ${
+            !isLoggedIn
+              ? 'bg-yellow-400 text-gray-900 active:bg-yellow-500 shadow-yellow-200'
+              : 'bg-orange-500 text-white active:bg-orange-600 shadow-orange-200'
+          }`}
         >
-          이벤트 참여하기
+          {!isLoggedIn ? '로그인해서 참여하기' : '이벤트 참여하기'}
         </button>
 
         <section className="bg-white rounded-2xl p-6 shadow-sm">
@@ -261,25 +312,27 @@ export const EventInfoPage = () => {
           </div>
         </section>
 
-        <section className="bg-white rounded-2xl p-6 shadow-sm">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">당첨 확률</h3>
-          <div className="text-center mb-4">
-            <div className="text-3xl font-bold text-orange-500 mb-2">{probabilityLabel}</div>
-            <p className="text-sm text-gray-600">현재 예상 당첨 확률</p>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
-            <div
-              className="bg-gradient-to-r from-orange-400 to-orange-500 h-3 rounded-full"
-              style={{ width: progressWidth }}
-              aria-label={`당첨 확률 ${probabilityLabel}`}
-            />
-          </div>
-          <div className="flex justify-between text-xs text-gray-500">
-            <span>0%</span>
-            <span>50%</span>
-            <span>100%</span>
-          </div>
-        </section>
+        {isLoggedIn && userEventStatus && (
+          <section className="bg-white rounded-2xl p-6 shadow-sm">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">당첨 확률</h3>
+            <div className="text-center mb-4">
+              <div className="text-3xl font-bold text-orange-500 mb-2">{probabilityLabel}</div>
+              <p className="text-sm text-gray-600">현재 예상 당첨 확률</p>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
+              <div
+                className="bg-gradient-to-r from-orange-400 to-orange-500 h-3 rounded-full"
+                style={{ width: progressWidth }}
+                aria-label={`당첨 확률 ${probabilityLabel}`}
+              />
+            </div>
+            <div className="flex justify-between text-xs text-gray-500">
+              <span>0%</span>
+              <span>50%</span>
+              <span>100%</span>
+            </div>
+          </section>
+        )}
       </main>
 
       {/* Participation Modal */}
@@ -300,9 +353,7 @@ export const EventInfoPage = () => {
             <div className="space-y-6">
               <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
                 <p className="text-sm text-gray-500 mb-1">내 보유 포인트</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {formatNumber(eventData.userStatus.myPoints)} P
-                </p>
+                <p className="text-2xl font-bold text-gray-900">{formatNumber(currentPoint)} P</p>
               </div>
 
               <div>
@@ -320,8 +371,8 @@ export const EventInfoPage = () => {
                   />
                   <button
                     type="button"
-                    onClick={() => setBetPoint(eventData.userStatus.myPoints.toString())}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-orange-500 bg-orange-50 px-2.5 py-1.5 rounded-lg hover:bg-orange-100 transition-colors"
+                    onClick={() => setBetPoint(currentPoint.toString())}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-orange-500 bg-orange-50 px-2.5 py-1.5 rounded-lg hover:bg-orange-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     전액사용
                   </button>
