@@ -3,6 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { useAxios } from '../hooks/useAxios';
 import { useAuth } from '../context/AuthContext';
 
+// ----------------------------------------------------------------------
+// 1. 타입 정의
+// ----------------------------------------------------------------------
+
 type PointStat = {
   id: string;
   label: string;
@@ -35,13 +39,17 @@ interface ActiveEventResponse {
     totalAccumulatedPoints: number;
     totalParticipants: number;
   };
-  winner?: string | null; // [수정 1] winner 필드 추가
+  winner?: string | null;
 }
 
 interface UserEventStatus {
   myPoints: number;
   winProbability: number;
 }
+
+// ----------------------------------------------------------------------
+// 2. 헬퍼 함수들
+// ----------------------------------------------------------------------
 
 const clampPercentage = (value: number) => Math.max(0, Math.min(100, value));
 
@@ -57,20 +65,57 @@ const formatDateTime = (dateStr: string) => {
   return `${year}.${month}.${day} ${hours}시 ${minutes}분`;
 };
 
+// [추가] JWT 토큰에서 사용자 ID 추출하는 함수
+const getMemberIdFromToken = (token: string): string => {
+  if (!token) return '';
+  try {
+    const base64Url = token.split('.')[1];
+    if (!base64Url) return '';
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      window
+        .atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    const payload = JSON.parse(jsonPayload);
+    return payload.userId || payload.sub || '';
+  } catch (e) {
+    console.error('Failed to parse JWT', e);
+    return '';
+  }
+};
+
+// ----------------------------------------------------------------------
+// 3. 컴포넌트 구현
+// ----------------------------------------------------------------------
+
 export const EventInfoPage = () => {
   const navigate = useNavigate();
   const axiosInstance = useAxios();
-  const { isLoggedIn, isLoading } = useAuth();
+  const { isLoggedIn, isLoading, accessToken } = useAuth(); // accessToken 가져오기
 
   const [eventData, setEventData] = useState<ActiveEventResponse | null>(null);
   const [userEventStatus, setUserEventStatus] = useState<UserEventStatus | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string>(''); // [추가] 현재 사용자 ID 상태
 
   // 모달 상태 관리
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
-  const [isWinnerModalOpen, setIsWinnerModalOpen] = useState(false); // [수정 4] 당첨자 모달 상태
+  const [isWinnerModalOpen, setIsWinnerModalOpen] = useState(false);
 
   const [betPoint, setBetPoint] = useState<string>('');
   const [currentPoint, setCurrentPoint] = useState<number>(0);
+
+  // [추가] 토큰이 변경될 때마다 사용자 ID 업데이트
+  useEffect(() => {
+    if (accessToken) {
+      const id = getMemberIdFromToken(accessToken);
+      setCurrentUserId(id);
+    } else {
+      setCurrentUserId('');
+    }
+  }, [accessToken]);
 
   const fetchUserPoints = useCallback(async () => {
     try {
@@ -98,7 +143,6 @@ export const EventInfoPage = () => {
       console.log(response.data);
       setEventData(response.data);
     } catch (error) {
-      // [수정 2] 에러 발생 시 경고창 표시 후 이전 페이지로 이동
       console.error('Failed to fetch event data:', error);
       alert('현재 진행중인 행사가 없습니다.');
       navigate('/');
@@ -121,8 +165,14 @@ export const EventInfoPage = () => {
     fetchUserPoints();
   };
 
-  // [수정 4] 당첨자 확인 버튼 핸들러
   const handleCheckWinnerClick = () => {
+    // 로그인 안 된 상태에서 확인하려고 하면 로그인 유도
+    if (!isLoggedIn) {
+      if (window.confirm('당첨 결과를 확인하려면 로그인이 필요합니다.\n로그인 하시겠습니까?')) {
+        handleLoginClick();
+      }
+      return;
+    }
     setIsWinnerModalOpen(true);
   };
 
@@ -197,7 +247,6 @@ export const EventInfoPage = () => {
       },
     ];
 
-    // [수정 3] winner 유무에 따른 상세 정보 분기 처리
     let eventDetailsData: EventDetail[] = [
       {
         id: 'count',
@@ -208,7 +257,6 @@ export const EventInfoPage = () => {
     ];
 
     if (winner) {
-      // 당첨자가 있으면: 기간, 발표일 제거하고 "행사 마감" 표시
       eventDetailsData.push({
         id: 'status',
         label: '행사 상태',
@@ -217,7 +265,6 @@ export const EventInfoPage = () => {
         valueClassName: 'text-red-500 font-bold',
       });
     } else {
-      // 당첨자가 없으면(진행 중): 기간, 발표일 표시
       eventDetailsData.push(
         {
           id: 'period',
@@ -264,8 +311,9 @@ export const EventInfoPage = () => {
     );
   }
 
-  // [수정 4] 당첨자 존재 여부 확인
   const isEventClosed = !!eventData.winner;
+  // [추가] 내가 당첨자인지 여부 확인
+  const isMeWinner = !!(isLoggedIn && currentUserId && eventData.winner === currentUserId);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -309,7 +357,6 @@ export const EventInfoPage = () => {
           </div>
         </section>
 
-        {/* [수정 4] 버튼 로직 변경: 마감 시 '당첨자 확인하기', 진행 중 시 '참여하기/로그인' */}
         {isEventClosed ? (
           <button
             type="button"
@@ -317,7 +364,7 @@ export const EventInfoPage = () => {
             className="w-full font-bold text-lg py-4 rounded-xl transition-colors shadow-lg bg-indigo-500 text-white active:bg-indigo-600 shadow-indigo-200"
           >
             <i className="fas fa-trophy mr-2"></i>
-            당첨자 확인하기
+            당첨 결과 확인하기
           </button>
         ) : (
           <button
@@ -453,7 +500,7 @@ export const EventInfoPage = () => {
         </div>
       )}
 
-      {/* [수정 5] Winner Check Modal */}
+      {/* [수정] My Result Modal (나의 당첨 여부 확인) */}
       {isWinnerModalOpen && eventData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-opacity px-4">
           <div className="bg-white w-full max-w-sm rounded-2xl p-8 shadow-2xl relative animate-bounce-in text-center">
@@ -465,28 +512,47 @@ export const EventInfoPage = () => {
               <i className="fas fa-times text-xl" />
             </button>
 
-            <div className="w-20 h-20 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <i className="fas fa-trophy text-4xl text-indigo-500"></i>
-            </div>
-
-            <h3 className="text-2xl font-bold text-gray-900 mb-2">당첨자 발표</h3>
-            <p className="text-gray-500 mb-6">이번 행사의 행운의 주인공입니다!</p>
-
-            <div className="bg-indigo-50 p-6 rounded-xl border border-indigo-100 mb-6">
-              <p className="text-sm font-semibold text-indigo-400 mb-1 uppercase tracking-wide">
-                Winner ID
-              </p>
-              <p className="text-2xl font-extrabold text-indigo-900 break-all">
-                {eventData.winner}
-              </p>
-            </div>
+            {/* 당첨 여부에 따른 UI 분기 */}
+            {isMeWinner ? (
+              <>
+                <div className="w-20 h-20 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <i className="fas fa-trophy text-4xl text-yellow-500 animate-pulse"></i>
+                </div>
+                <h3 className="text-2xl font-bold text-gray-900 mb-2">축하합니다!</h3>
+                <p className="text-gray-600 mb-6">
+                  회원님이 이번 행사의 <br />
+                  <span className="text-indigo-600 font-bold">주인공</span>이 되셨습니다!
+                </p>
+                <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-200 mb-6">
+                  <p className="text-sm font-semibold text-yellow-700">
+                    관리자에게 문의하여 상품을 수령하세요.
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <i className="fas fa-sad-tear text-4xl text-gray-400"></i>
+                </div>
+                <h3 className="text-2xl font-bold text-gray-900 mb-2">아쉽네요...</h3>
+                <p className="text-gray-600 mb-6">
+                  이번 행사에는 당첨되지 않았습니다.
+                  <br />
+                  다음 기회를 노려보세요!
+                </p>
+              </>
+            )}
 
             <button
               type="button"
               onClick={() => setIsWinnerModalOpen(false)}
-              className="w-full py-3.5 text-white font-bold bg-indigo-500 rounded-xl hover:bg-indigo-600 shadow-lg shadow-indigo-200 transition-colors"
+              className={`w-full py-3.5 text-white font-bold rounded-xl shadow-lg transition-colors ${
+                isMeWinner
+                  ? 'bg-yellow-500 hover:bg-yellow-600 shadow-yellow-200'
+                  : 'bg-gray-500 hover:bg-gray-600 shadow-gray-200'
+              }`}
             >
-              확인했습니다
+              확인
             </button>
           </div>
         </div>
