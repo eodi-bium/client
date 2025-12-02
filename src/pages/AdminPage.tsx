@@ -1,15 +1,48 @@
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAxios } from '../hooks/useAxios';
 import { useAuth } from '../context/AuthContext';
 import { adminItemOptions } from '../data/admin';
 
+// ----------------------------------------------------------------------
+// 1. 타입 정의
+// ----------------------------------------------------------------------
 interface Item {
   id: string;
   type: string;
   quantity: number | string;
 }
 
+interface EventFormData {
+  giftName: string;
+  count: string;
+  giftImageUrl: string;
+  startDate: string;
+  endDate: string;
+  announcementDate: string;
+}
+
+// [UPDATED] 1. 최신 이벤트 조회 응답 타입 (winner 필드 추가)
+interface EventResponse {
+  eventId: number;
+  giftName: string;
+  count: number;
+  giftImageUrl: string;
+  period: {
+    startDate: string;
+    endDate: string;
+    announcementDate: string;
+  };
+  stats: {
+    totalAccumulatedPoints: number;
+    totalParticipants: number;
+  };
+  winner?: string | null; // 당첨자 ID (있을 수도, 없을 수도 있음)
+}
+
+// ----------------------------------------------------------------------
+// 2. 공통 헤더 컴포넌트
+// ----------------------------------------------------------------------
 const AdminHeader = () => {
   const navigate = useNavigate();
   const { logout } = useAuth();
@@ -51,6 +84,9 @@ const AdminHeader = () => {
   );
 };
 
+// ----------------------------------------------------------------------
+// 3. 포인트 지급 폼 컴포넌트
+// ----------------------------------------------------------------------
 type CreditPointsFormProps = {
   userId: string;
   items: Item[];
@@ -164,15 +200,9 @@ const CreditPointsForm = ({
   </div>
 );
 
-interface EventFormData {
-  giftName: string;
-  count: string;
-  giftImageUrl: string;
-  startDate: string;
-  endDate: string;
-  announcementDate: string;
-}
-
+// ----------------------------------------------------------------------
+// 4. 행사 등록 폼 컴포넌트
+// ----------------------------------------------------------------------
 const getFormattedDate = (date: Date) => {
   const offset = date.getTimezoneOffset() * 60000;
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
@@ -182,10 +212,8 @@ const getDefaultEventDates = () => {
   const now = new Date();
   const tomorrow = new Date(now);
   tomorrow.setDate(tomorrow.getDate() + 1);
-
   const announcement = new Date(tomorrow);
   announcement.setMinutes(announcement.getMinutes() + 30);
-
   return {
     startDate: getFormattedDate(now),
     endDate: getFormattedDate(tomorrow),
@@ -218,7 +246,6 @@ const AddEventForm = () => {
         endDate: new Date(formData.endDate).toISOString(),
         announcementDate: new Date(formData.announcementDate).toISOString(),
       };
-
       await axios.post('/admin/event/add', payload);
       alert('행사가 성공적으로 등록되었습니다!');
       setFormData({
@@ -269,7 +296,6 @@ const AddEventForm = () => {
             />
           </div>
         </div>
-
         <div className="space-y-2">
           <label className="block text-sm font-semibold text-slate-700">이미지 URL</label>
           <input
@@ -282,7 +308,6 @@ const AddEventForm = () => {
             className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm text-slate-700 shadow-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-orange-500"
           />
         </div>
-
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-2">
             <label className="block text-sm font-semibold text-slate-700">시작일</label>
@@ -318,7 +343,6 @@ const AddEventForm = () => {
             />
           </div>
         </div>
-
         <button
           type="submit"
           className="w-full rounded-lg bg-gradient-to-r from-orange-500 to-amber-600 px-4 py-3 text-sm font-semibold text-white shadow-lg transition hover:from-orange-600 hover:to-amber-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2"
@@ -333,15 +357,241 @@ const AddEventForm = () => {
   );
 };
 
+// ----------------------------------------------------------------------
+// 5. [UPDATED] 당첨자 추첨 폼 컴포넌트
+// ----------------------------------------------------------------------
+const DrawWinnerForm = () => {
+  const axios = useAxios();
+  const [latestEvent, setLatestEvent] = useState<EventResponse | null>(null);
+  const [winnerList, setWinnerList] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [noEvent, setNoEvent] = useState<boolean>(false);
+  // 1. 최신 이벤트 정보 불러오기
+  useEffect(() => {
+    const fetchLatestEvent = async () => {
+      try {
+        setNoEvent(false); // 초기화
+        const response = await axios.get('/event/lastest');
+        console.log('Latest Event Response:', response.data);
+
+        const eventData = response.data.body || response.data;
+
+        // [변경] 데이터가 비어있는지 확인
+        if (!eventData) {
+          setNoEvent(true);
+          setLatestEvent(null);
+          return;
+        }
+
+        setLatestEvent(eventData);
+
+        // 이미 winner가 있으면 state에 저장
+        if (eventData.winner) {
+          setWinnerList(eventData.winner.split(','));
+        } else {
+          setWinnerList([]);
+        }
+      } catch (error: any) {
+        console.error('Failed to fetch latest event:', error);
+        // [변경] 404 에러 등 데이터가 없는 경우 처리
+        // (백엔드에서 데이터가 없을 때 404를 주는지, null을 주는지에 따라 다르지만 안전하게 처리)
+        setNoEvent(true);
+        setLatestEvent(null);
+      }
+    };
+    fetchLatestEvent();
+  }, [axios]);
+
+  // 2. 추첨 실행
+  const handleDraw = async () => {
+    if (!latestEvent) return;
+
+    if (!window.confirm(`[${latestEvent.giftName}] 행사의 추첨을 진행하시겠습니까?`)) {
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const response = await axios.post('/admin/draw/start', {
+        eventId: latestEvent.eventId,
+      });
+
+      console.log('Draw Result:', response.data);
+      const resultData = response.data.body || response.data;
+
+      // 추첨 성공 시 당첨자 업데이트
+      const winnerString = resultData.winnerIds || resultData.winnerId || '';
+      setWinnerList(winnerString.split(','));
+      alert('추첨이 성공적으로 완료되었습니다!');
+    } catch (error: any) {
+      console.error('Draw failed:', error);
+      alert('추첨에 실패했습니다. (이미 추첨되었거나 서버 오류)');
+      // 에러 발생 시 기존 winner 정보가 있으면 유지, 없으면 null (혹은 다시 fetch)
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return '-';
+    return new Date(dateString).toLocaleDateString('ko-KR', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  return (
+    <div className="rounded-2xl bg-white p-6 shadow-xl">
+      <div className="flex items-center gap-2 mb-6">
+        <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600">
+          <i className="ri-trophy-line text-xl"></i>
+        </div>
+        <h3 className="text-lg font-semibold text-slate-900">당첨자 추첨</h3>
+      </div>
+
+      {noEvent ? (
+        <div className="flex flex-col items-center justify-center py-16 text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-300">
+          <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4 text-slate-400">
+            <i className="ri-calendar-close-line text-3xl"></i>
+          </div>
+          <h4 className="text-lg font-medium text-slate-700 mb-1">진행 중인 행사가 없습니다</h4>
+          <p className="text-sm">새로운 행사를 등록해주세요.</p>
+        </div>
+      ) : !latestEvent ? (
+        /* 2. 데이터 로딩 중 (이벤트가 없지도 않고, 데이터도 아직 안 들어온 상태) */
+        <div className="text-center py-10 text-slate-500">
+          <i className="ri-loader-4-line text-3xl animate-spin mb-2 block"></i>
+          최신 행사 정보를 불러오고 있습니다...
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {/* 행사 정보 카드 */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-5">
+            <div className="flex flex-col md:flex-row gap-5">
+              {/* 이미지 영역 */}
+              {latestEvent.giftImageUrl && (
+                <div className="w-full md:w-32 h-32 flex-shrink-0 bg-white rounded-lg border border-slate-200 overflow-hidden">
+                  <img
+                    src={latestEvent.giftImageUrl}
+                    alt={latestEvent.giftName}
+                    className="w-full h-full object-contain p-2"
+                  />
+                </div>
+              )}
+
+              {/* 텍스트 정보 영역 */}
+              <div className="flex-1 space-y-2">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <span className="inline-block bg-indigo-100 text-indigo-700 text-xs font-bold px-2 py-0.5 rounded mb-1">
+                      Event ID: {latestEvent.eventId}
+                    </span>
+                    <h4 className="text-xl font-bold text-slate-800">{latestEvent.giftName}</h4>
+                  </div>
+                  <div className="text-right">
+                    <span className="block text-sm text-slate-500">상품 수량</span>
+                    <span className="text-lg font-semibold text-slate-900">
+                      {latestEvent.count}개
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-slate-600 mt-2">
+                  <div className="bg-white p-2 rounded border border-slate-100">
+                    <p className="text-xs text-slate-400 mb-1">총 누적 포인트</p>
+                    <p className="font-semibold text-indigo-600">
+                      {latestEvent.stats.totalAccumulatedPoints.toLocaleString()} P
+                    </p>
+                  </div>
+                  <div className="bg-white p-2 rounded border border-slate-100">
+                    <p className="text-xs text-slate-400 mb-1">총 참여자 수</p>
+                    <p className="font-semibold text-indigo-600">
+                      {latestEvent.stats.totalParticipants.toLocaleString()} 명
+                    </p>
+                  </div>
+                </div>
+
+                <div className="text-xs text-slate-500 pt-2 border-t border-slate-200 mt-2">
+                  <p>발표일: {formatDate(latestEvent.period.announcementDate)}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* [UI 분기 처리] winnerInfo가 있으면 당첨자 카드 표시, 없으면 추첨 버튼 표시 */}
+          {winnerList.length > 0 ? (
+            <div className="p-6 bg-indigo-50 border border-indigo-200 rounded-xl text-center animate-fade-in-up">
+              <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm text-indigo-500">
+                <i className="ri-medal-line text-3xl"></i>
+              </div>
+              <h4 className="text-sm font-bold text-indigo-500 mb-4 tracking-wide uppercase">
+                WINNER LIST ({winnerList.length}명)
+              </h4>
+
+              {/* [핵심 변경] 당첨자 리스트를 배지 형태로 출력 */}
+              <div className="flex flex-wrap justify-center gap-2 mb-2">
+                {winnerList.map((winnerId, index) => (
+                  <span
+                    key={`${winnerId}-${index}`}
+                    className="inline-flex items-center px-3 py-1.5 rounded-full bg-white border border-indigo-200 text-indigo-700 font-bold shadow-sm"
+                  >
+                    <i className="ri-user-star-line mr-1.5 text-indigo-500"></i>
+                    {winnerId}
+                  </span>
+                ))}
+              </div>
+
+              <p className="text-sm text-indigo-400 mt-3">
+                총 {winnerList.length}명의 당첨자가 확정되었습니다.
+              </p>
+            </div>
+          ) : (
+            <button
+              onClick={handleDraw}
+              disabled={isLoading}
+              className={`w-full rounded-lg px-4 py-4 text-sm font-bold text-white shadow-lg transition focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 flex items-center justify-center gap-2
+                ${
+                  isLoading
+                    ? 'bg-slate-300 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700'
+                }`}
+            >
+              {isLoading ? (
+                <>
+                  <i className="ri-loader-4-line animate-spin text-lg"></i>
+                  추첨 진행 중...
+                </>
+              ) : (
+                <>
+                  <i className="ri-magic-line text-lg"></i>이 행사 추첨 시작하기
+                </>
+              )}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ----------------------------------------------------------------------
+// 6. 메인 관리자 페이지
+// ----------------------------------------------------------------------
 export const AdminPage = () => {
   const axios = useAxios();
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get('tab') === 'events' ? 'events' : 'points';
+
+  // 탭 상태 관리 로직 (points | events | draw)
+  const tabParam = searchParams.get('tab');
+  const activeTab = tabParam === 'events' ? 'events' : tabParam === 'draw' ? 'draw' : 'points';
 
   const [userId, setUserId] = useState(searchParams.get('user_id') || '');
   const [items, setItems] = useState<Item[]>([{ id: '1', type: '', quantity: '' }]);
 
-  const handleTabChange = (tab: 'points' | 'events') => {
+  const handleTabChange = (tab: 'points' | 'events' | 'draw') => {
     setSearchParams({ tab });
   };
 
@@ -354,16 +604,7 @@ export const AdminPage = () => {
   };
 
   const handleItemChange = (id: string, field: keyof Item, value: string | number) => {
-    setItems((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              [field]: value,
-            }
-          : item
-      )
-    );
+    setItems((prev) => prev.map((item) => (item.id === id ? { ...item, [field]: value } : item)));
   };
 
   const resetForm = () => {
@@ -373,30 +614,26 @@ export const AdminPage = () => {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-
     if (!userId.trim()) {
       alert('유효한 사용자 아이디를 입력해주세요.');
       return;
     }
-
     const invalidItems = items.filter((item) => !item.type || Number(item.quantity) < 1);
     if (invalidItems.length > 0) {
       alert('제출하기 전에 모든 항목에 대해 종류와 수량을 선택해주세요.');
       return;
     }
-
     const payload = {
       typeAndCounts: items.map((item) => ({
         recyclingType: item.type,
         count: Number(item.quantity),
       })),
-      eventId: 105, // 요청하신 고정값
+      eventId: 105,
       memberId: userId,
     };
 
     try {
       await axios.post('/admin/point/add', payload);
-
       console.log('Points credited:', payload);
       alert('포인트 적립 완료!');
       resetForm();
@@ -409,10 +646,11 @@ export const AdminPage = () => {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <AdminHeader />
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-6">
-        <div className="flex space-x-2 bg-white p-1 rounded-xl shadow-sm w-fit">
+        {/* 탭 네비게이션 */}
+        <div className="flex space-x-2 bg-white p-1 rounded-xl shadow-sm w-fit overflow-x-auto">
           <button
             onClick={() => handleTabChange('points')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
               activeTab === 'points'
                 ? 'bg-teal-500 text-white shadow-md'
                 : 'text-slate-600 hover:bg-slate-50'
@@ -425,7 +663,7 @@ export const AdminPage = () => {
           </button>
           <button
             onClick={() => handleTabChange('events')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
               activeTab === 'events'
                 ? 'bg-orange-500 text-white shadow-md'
                 : 'text-slate-600 hover:bg-slate-50'
@@ -436,9 +674,24 @@ export const AdminPage = () => {
               행사 등록
             </span>
           </button>
+          {/* [NEW] 당첨자 추첨 탭 버튼 */}
+          <button
+            onClick={() => handleTabChange('draw')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+              activeTab === 'draw'
+                ? 'bg-indigo-500 text-white shadow-md'
+                : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <i className="ri-trophy-line"></i>
+              당첨자 추첨
+            </span>
+          </button>
         </div>
 
-        {activeTab === 'points' ? (
+        {/* 탭 컨텐츠 렌더링 */}
+        {activeTab === 'points' && (
           <CreditPointsForm
             userId={userId}
             items={items}
@@ -448,9 +701,9 @@ export const AdminPage = () => {
             onItemChange={handleItemChange}
             onSubmit={handleSubmit}
           />
-        ) : (
-          <AddEventForm />
         )}
+        {activeTab === 'events' && <AddEventForm />}
+        {activeTab === 'draw' && <DrawWinnerForm />}
       </main>
     </div>
   );

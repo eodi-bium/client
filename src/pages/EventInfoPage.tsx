@@ -3,6 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { useAxios } from '../hooks/useAxios';
 import { useAuth } from '../context/AuthContext';
 
+// ----------------------------------------------------------------------
+// 1. 타입 정의
+// ----------------------------------------------------------------------
+
 type PointStat = {
   id: string;
   label: string;
@@ -35,12 +39,17 @@ interface ActiveEventResponse {
     totalAccumulatedPoints: number;
     totalParticipants: number;
   };
+  winner?: string | null;
 }
 
 interface UserEventStatus {
   myPoints: number;
   winProbability: number;
 }
+
+// ----------------------------------------------------------------------
+// 2. 헬퍼 함수들
+// ----------------------------------------------------------------------
 
 const clampPercentage = (value: number) => Math.max(0, Math.min(100, value));
 
@@ -56,15 +65,57 @@ const formatDateTime = (dateStr: string) => {
   return `${year}.${month}.${day} ${hours}시 ${minutes}분`;
 };
 
+// [추가] JWT 토큰에서 사용자 ID 추출하는 함수
+const getMemberIdFromToken = (token: string): string => {
+  if (!token) return '';
+  try {
+    const base64Url = token.split('.')[1];
+    if (!base64Url) return '';
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      window
+        .atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    const payload = JSON.parse(jsonPayload);
+    return payload.userId || payload.sub || '';
+  } catch (e) {
+    console.error('Failed to parse JWT', e);
+    return '';
+  }
+};
+
+// ----------------------------------------------------------------------
+// 3. 컴포넌트 구현
+// ----------------------------------------------------------------------
+
 export const EventInfoPage = () => {
   const navigate = useNavigate();
   const axiosInstance = useAxios();
-  const { isLoggedIn, isLoading } = useAuth();
+  const { isLoggedIn, isLoading, accessToken } = useAuth(); // accessToken 가져오기
+
   const [eventData, setEventData] = useState<ActiveEventResponse | null>(null);
   const [userEventStatus, setUserEventStatus] = useState<UserEventStatus | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string>(''); // [추가] 현재 사용자 ID 상태
+
+  // 모달 상태 관리
+  const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
+  const [isWinnerModalOpen, setIsWinnerModalOpen] = useState(false);
+
   const [betPoint, setBetPoint] = useState<string>('');
   const [currentPoint, setCurrentPoint] = useState<number>(0);
+
+  // [추가] 토큰이 변경될 때마다 사용자 ID 업데이트
+  useEffect(() => {
+    if (accessToken) {
+      const id = getMemberIdFromToken(accessToken);
+      setCurrentUserId(id);
+    } else {
+      setCurrentUserId('');
+    }
+  }, [accessToken]);
 
   const fetchUserPoints = useCallback(async () => {
     try {
@@ -93,8 +144,10 @@ export const EventInfoPage = () => {
       setEventData(response.data);
     } catch (error) {
       console.error('Failed to fetch event data:', error);
+      alert('현재 진행중인 행사가 없습니다.');
+      navigate('/');
     }
-  }, [axiosInstance]);
+  }, [axiosInstance, navigate]);
 
   useEffect(() => {
     fetchEventData();
@@ -107,14 +160,25 @@ export const EventInfoPage = () => {
   }, [isLoading, isLoggedIn, eventData?.eventId, fetchUserEventStatus]);
 
   const handleJoinClick = () => {
-    setIsModalOpen(true);
+    setIsJoinModalOpen(true);
     setBetPoint('');
     fetchUserPoints();
   };
 
+  const handleCheckWinnerClick = () => {
+    // 로그인 안 된 상태에서 확인하려고 하면 로그인 유도
+    if (!isLoggedIn) {
+      if (window.confirm('당첨 결과를 확인하려면 로그인이 필요합니다.\n로그인 하시겠습니까?')) {
+        handleLoginClick();
+      }
+      return;
+    }
+    setIsWinnerModalOpen(true);
+  };
+
   const handleJoinSubmit = async () => {
     if (!eventData) return;
-    const points = Number(betPoint.replace(/[^0-9]/g, '')); // Remove non-numeric chars just in case
+    const points = Number(betPoint.replace(/[^0-9]/g, ''));
 
     if (points <= 0) {
       alert('1포인트 이상 입력해주세요.');
@@ -126,15 +190,14 @@ export const EventInfoPage = () => {
     }
 
     try {
-      // TODO: Verify the exact endpoint for event participation
       await axiosInstance.post('/event/join', {
         eventId: eventData.eventId,
         point: points,
       });
       alert('참여가 완료되었습니다!');
-      setIsModalOpen(false);
-      fetchEventData(); // Refresh event data
-      fetchUserEventStatus(); // Refresh user points and probability
+      setIsJoinModalOpen(false);
+      fetchEventData();
+      fetchUserEventStatus();
     } catch (error) {
       console.error('Failed to join event:', error);
       alert('참여 처리에 실패했습니다.');
@@ -151,7 +214,7 @@ export const EventInfoPage = () => {
       };
     }
 
-    const { period, stats, count } = eventData;
+    const { period, stats, count, winner } = eventData;
 
     const pointStatsData: PointStat[] = [
       ...(isLoggedIn && userEventStatus
@@ -184,26 +247,39 @@ export const EventInfoPage = () => {
       },
     ];
 
-    const eventDetailsData: EventDetail[] = [
+    let eventDetailsData: EventDetail[] = [
       {
         id: 'count',
         label: '상품 개수',
         value: `${formatNumber(count)} 개`,
         icon: 'fas fa-gift',
       },
-      {
-        id: 'period',
-        label: '행사 기간',
-        value: `${formatDateTime(period.startDate)} - ${formatDateTime(period.endDate)}`,
-        icon: 'fas fa-calendar-alt',
-      },
-      {
-        id: 'announcement',
-        label: '당첨자 발표',
-        value: formatDateTime(period.announcementDate),
-        icon: 'fas fa-bullhorn',
-      },
     ];
+
+    if (winner) {
+      eventDetailsData.push({
+        id: 'status',
+        label: '행사 상태',
+        value: '행사 마감',
+        icon: 'fas fa-flag-checkered',
+        valueClassName: 'text-red-500 font-bold',
+      });
+    } else {
+      eventDetailsData.push(
+        {
+          id: 'period',
+          label: '행사 기간',
+          value: `${formatDateTime(period.startDate)} - ${formatDateTime(period.endDate)}`,
+          icon: 'fas fa-calendar-alt',
+        },
+        {
+          id: 'announcement',
+          label: '당첨자 발표',
+          value: formatDateTime(period.announcementDate),
+          icon: 'fas fa-bullhorn',
+        }
+      );
+    }
 
     const winProbability = userEventStatus ? userEventStatus.winProbability : 0;
 
@@ -226,10 +302,19 @@ export const EventInfoPage = () => {
 
   if (!eventData) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">로딩 중...</div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-2">
+          <i className="fas fa-spinner fa-spin text-2xl text-orange-500"></i>
+          <span className="text-gray-500">정보를 불러오는 중...</span>
+        </div>
+      </div>
     );
   }
 
+  const isEventClosed = !!eventData.winner;
+  // [추가] 내가 당첨자인지 여부 확인
+  const winners = eventData.winner ? eventData.winner.split(',') : [];
+  const isMeWinner = !!(isLoggedIn && currentUserId && winners.includes(currentUserId));
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="fixed top-0 w-full bg-white z-50 px-4 py-3 flex items-center justify-between shadow-sm">
@@ -250,16 +335,16 @@ export const EventInfoPage = () => {
       <main className="pt-16 pb-24 px-4 space-y-6">
         <section className="bg-white rounded-2xl p-6 shadow-sm">
           <div className="flex flex-col items-center text-center">
-            <div className="w-48 h-32 mb-4 overflow-hidden rounded-xl">
+            <div className="w-48 h-32 mb-4 overflow-hidden rounded-xl bg-gray-100">
               <img
                 src={eventData.giftImageUrl}
                 alt={eventData.giftName}
-                className="w-full h-full object-cover object-top"
+                className={`w-full h-full object-cover object-top ${isEventClosed ? 'grayscale opacity-80' : ''}`}
                 loading="lazy"
               />
             </div>
             <h2 className="text-xl font-semibold text-gray-900 mb-4">{eventData.giftName}</h2>
-            <div className="flex flex-col items-center gap-2 text-sm text-gray-500">
+            <div className="flex flex-col items-center gap-2 text-sm text-gray-500 w-full">
               {eventDetails.map((detail) => (
                 <div key={detail.id} className="flex items-center gap-2">
                   {detail.icon && <i className={`${detail.icon} w-4 text-center`} aria-hidden />}
@@ -272,17 +357,28 @@ export const EventInfoPage = () => {
           </div>
         </section>
 
-        <button
-          type="button"
-          onClick={isLoggedIn ? handleJoinClick : handleLoginClick}
-          className={`w-full font-bold text-lg py-4 rounded-xl transition-colors shadow-lg ${
-            !isLoggedIn
-              ? 'bg-yellow-400 text-gray-900 active:bg-yellow-500 shadow-yellow-200'
-              : 'bg-orange-500 text-white active:bg-orange-600 shadow-orange-200'
-          }`}
-        >
-          {!isLoggedIn ? '로그인해서 참여하기' : '이벤트 참여하기'}
-        </button>
+        {isEventClosed ? (
+          <button
+            type="button"
+            onClick={handleCheckWinnerClick}
+            className="w-full font-bold text-lg py-4 rounded-xl transition-colors shadow-lg bg-indigo-500 text-white active:bg-indigo-600 shadow-indigo-200"
+          >
+            <i className="fas fa-trophy mr-2"></i>
+            당첨 결과 확인하기
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={isLoggedIn ? handleJoinClick : handleLoginClick}
+            className={`w-full font-bold text-lg py-4 rounded-xl transition-colors shadow-lg ${
+              !isLoggedIn
+                ? 'bg-yellow-400 text-gray-900 active:bg-yellow-500 shadow-yellow-200'
+                : 'bg-orange-500 text-white active:bg-orange-600 shadow-orange-200'
+            }`}
+          >
+            {!isLoggedIn ? '로그인해서 참여하기' : '이벤트 참여하기'}
+          </button>
+        )}
 
         <section className="bg-white rounded-2xl p-6 shadow-sm">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">포인트 현황</h3>
@@ -336,14 +432,14 @@ export const EventInfoPage = () => {
       </main>
 
       {/* Participation Modal */}
-      {isModalOpen && eventData && (
+      {isJoinModalOpen && eventData && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm transition-opacity">
           <div className="bg-white w-full sm:w-[400px] rounded-t-2xl sm:rounded-2xl p-6 shadow-2xl animate-slide-up">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-bold text-gray-900">이벤트 참여</h3>
               <button
                 type="button"
-                onClick={() => setIsModalOpen(false)}
+                onClick={() => setIsJoinModalOpen(false)}
                 className="text-gray-400 hover:text-gray-600 p-1"
               >
                 <i className="fas fa-times text-xl" />
@@ -385,7 +481,7 @@ export const EventInfoPage = () => {
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={() => setIsJoinModalOpen(false)}
                   className="flex-1 py-3.5 text-gray-600 font-medium bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors"
                 >
                   취소
@@ -400,6 +496,64 @@ export const EventInfoPage = () => {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* [수정] My Result Modal (나의 당첨 여부 확인) */}
+      {isWinnerModalOpen && eventData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-opacity px-4">
+          <div className="bg-white w-full max-w-sm rounded-2xl p-8 shadow-2xl relative animate-bounce-in text-center">
+            <button
+              type="button"
+              onClick={() => setIsWinnerModalOpen(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+            >
+              <i className="fas fa-times text-xl" />
+            </button>
+
+            {/* 당첨 여부에 따른 UI 분기 */}
+            {isMeWinner ? (
+              <>
+                <div className="w-20 h-20 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <i className="fas fa-trophy text-4xl text-yellow-500 animate-pulse"></i>
+                </div>
+                <h3 className="text-2xl font-bold text-gray-900 mb-2">축하합니다!</h3>
+                <p className="text-gray-600 mb-6">
+                  회원님이 이번 행사의 <br />
+                  <span className="text-indigo-600 font-bold">주인공</span>이 되셨습니다!
+                </p>
+                <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-200 mb-6">
+                  <p className="text-sm font-semibold text-yellow-700">
+                    관리자에게 문의하여 상품을 수령하세요.
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <i className="fas fa-sad-tear text-4xl text-gray-400"></i>
+                </div>
+                <h3 className="text-2xl font-bold text-gray-900 mb-2">아쉽네요...</h3>
+                <p className="text-gray-600 mb-6">
+                  이번 행사에는 당첨되지 않았습니다.
+                  <br />
+                  다음 기회를 노려보세요!
+                </p>
+              </>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setIsWinnerModalOpen(false)}
+              className={`w-full py-3.5 text-white font-bold rounded-xl shadow-lg transition-colors ${
+                isMeWinner
+                  ? 'bg-yellow-500 hover:bg-yellow-600 shadow-yellow-200'
+                  : 'bg-gray-500 hover:bg-gray-600 shadow-gray-200'
+              }`}
+            >
+              확인
+            </button>
           </div>
         </div>
       )}
