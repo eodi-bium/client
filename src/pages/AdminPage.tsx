@@ -1,5 +1,5 @@
 import { type FormEvent, useState, useEffect } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, resolvePath } from 'react-router-dom';
 import { useAxios } from '../hooks/useAxios';
 import { useAuth } from '../context/AuthContext';
 import { adminItemOptions } from '../data/admin';
@@ -22,23 +22,30 @@ interface EventFormData {
   announcementDate: string;
 }
 
-interface EventResponse {
+interface EventPeriod {
+  startDate: string;
+  endDate: string;
+  announcementDate: string;
+}
+
+interface EventStats {
+  totalAccumulatedPoints: number;
+  totalParticipants: number;
+}
+
+interface SingleEvent {
   eventId: number;
   giftName: string;
   count: number;
   giftImageUrl: string;
-  period: {
-    startDate: string;
-    endDate: string;
-    announcementDate: string;
-  };
-  stats: {
-    totalAccumulatedPoints: number;
-    totalParticipants: number;
-  };
+  period: EventPeriod;
+  stats: EventStats;
   winner?: string | null;
 }
 
+interface EventListResponse {
+  events: SingleEvent[];
+}
 // ----------------------------------------------------------------------
 // 2. 공통 헤더 컴포넌트
 // ----------------------------------------------------------------------
@@ -383,60 +390,71 @@ const AddEventForm = () => {
 // ----------------------------------------------------------------------
 const DrawWinnerForm = () => {
   const axios = useAxios();
-  const [latestEvent, setLatestEvent] = useState<EventResponse | null>(null);
-  const [winnerList, setWinnerList] = useState<string[]>([]);
+  // State 타입을 SingleEvent[]로 변경
+  const [events, setEvents] = useState<SingleEvent[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [noEvent, setNoEvent] = useState<boolean>(false);
+  const [drawingId, setDrawingId] = useState<number | null>(null);
+
+  // 행사 목록 불러오기 로직 수정
+  const fetchEvents = async () => {
+    setIsLoading(true);
+    try {
+      const response = await axios.get('/event/all');
+
+      // [변경 포인트]
+      // Java의 record EventResponse(List<SingleEventResponse> events) 구조에 맞춤
+      // response.data (또는 body) 자체가 { events: [...] } 형태임
+      const responseData = response.data.body || response.data;
+
+      // data 내부의 .events 리스트를 가져와야 함. 없으면 빈 배열
+      const eventList = responseData.events || [];
+
+      // 최신순 정렬 (ID 내림차순)
+      const sortedList = Array.isArray(eventList)
+        ? eventList.sort((a: SingleEvent, b: SingleEvent) => b.eventId - a.eventId)
+        : [];
+
+      setEvents(sortedList);
+    } catch (error: any) {
+      console.error('Failed to fetch events:', error);
+      alert('행사 목록을 불러오는데 실패했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchLatestEvent = async () => {
-      try {
-        setNoEvent(false);
-        const response = await axios.get('/event/lastest');
-        const eventData = response.data.body || response.data;
-
-        if (!eventData) {
-          setNoEvent(true);
-          setLatestEvent(null);
-          return;
-        }
-
-        setLatestEvent(eventData);
-        if (eventData.winner) {
-          setWinnerList(eventData.winner.split(','));
-        } else {
-          setWinnerList([]);
-        }
-      } catch (error: any) {
-        console.error('Failed to fetch latest event:', error);
-        setNoEvent(true);
-        setLatestEvent(null);
-      }
-    };
-    fetchLatestEvent();
+    fetchEvents();
   }, [axios]);
 
-  const handleDraw = async () => {
-    if (!latestEvent) return;
-    if (!window.confirm(`[${latestEvent.giftName}] 행사의 추첨을 진행하시겠습니까?`)) {
+  // 개별 행사 추첨 핸들러 (타입 수정: EventResponse -> SingleEvent)
+  const handleDraw = async (targetEvent: SingleEvent) => {
+    if (!window.confirm(`[${targetEvent.giftName}] 행사의 추첨을 진행하시겠습니까?`)) {
       return;
     }
 
-    setIsLoading(true);
+    setDrawingId(targetEvent.eventId);
     try {
       const response = await axios.post('/admin/draw/start', {
-        eventId: latestEvent.eventId,
+        eventId: targetEvent.eventId,
       });
 
       const resultData = response.data.body || response.data;
       const winnerString = resultData.winnerIds || resultData.winnerId || '';
-      setWinnerList(winnerString.split(','));
+
       alert('추첨이 성공적으로 완료되었습니다!');
+
+      // 로컬 상태 업데이트
+      setEvents((prevEvents) =>
+        prevEvents.map((evt) =>
+          evt.eventId === targetEvent.eventId ? { ...evt, winner: winnerString } : evt
+        )
+      );
     } catch (error: any) {
       console.error('Draw failed:', error);
-      alert('추첨에 실패했습니다. (이미 추첨되었거나 서버 오류)');
+      alert('추첨에 실패했습니다. (참여자가 없거나 이미 추첨됨)');
     } finally {
-      setIsLoading(false);
+      setDrawingId(null);
     }
   };
 
@@ -453,134 +471,141 @@ const DrawWinnerForm = () => {
 
   return (
     <div className="rounded-[24px] bg-white p-8 shadow-sm border border-gray-100">
-      <div className="flex items-center gap-3 mb-8">
-        <div className="p-3 bg-green-50 rounded-2xl text-green-600">
-          <i className="ri-trophy-line text-2xl"></i>
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center gap-3">
+          <div className="p-3 bg-green-50 rounded-2xl text-green-600">
+            <i className="ri-trophy-line text-2xl"></i>
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-gray-900">행사 관리 및 추첨</h3>
+            <p className="text-sm text-gray-500">등록된 모든 행사의 당첨자를 관리합니다.</p>
+          </div>
         </div>
-        <div>
-          <h3 className="text-xl font-bold text-gray-900">당첨자 추첨</h3>
-          <p className="text-sm text-gray-500">종료된 행사의 당첨자를 선정합니다.</p>
-        </div>
+        <button
+          onClick={fetchEvents}
+          className="p-2 text-gray-400 hover:text-green-600 transition rounded-full hover:bg-green-50"
+          title="새로고침"
+        >
+          <i className="ri-refresh-line text-xl"></i>
+        </button>
       </div>
 
-      {noEvent ? (
+      {isLoading && events.length === 0 ? (
+        <div className="text-center py-20 text-gray-400">
+          <div className="w-10 h-10 border-4 border-green-200 border-t-green-500 rounded-full animate-spin mx-auto mb-4"></div>
+          행사 목록을 불러오는 중입니다...
+        </div>
+      ) : events.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-gray-400 bg-gray-50 rounded-[24px] border border-dashed border-gray-200">
           <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mb-4 text-gray-300 shadow-sm">
             <i className="ri-calendar-close-line text-3xl"></i>
           </div>
-          <h4 className="text-lg font-bold text-gray-600 mb-1">진행 중인 행사가 없습니다</h4>
+          <h4 className="text-lg font-bold text-gray-600 mb-1">등록된 행사가 없습니다</h4>
           <p className="text-sm">새로운 행사를 등록해주세요.</p>
         </div>
-      ) : !latestEvent ? (
-        <div className="text-center py-20 text-gray-400">
-          <div className="w-10 h-10 border-4 border-green-200 border-t-green-500 rounded-full animate-spin mx-auto mb-4"></div>
-          최신 행사 정보를 불러오고 있습니다...
-        </div>
       ) : (
-        <div className="space-y-6">
-          {/* 행사 정보 카드 */}
-          <div className="bg-white border border-gray-100 rounded-[20px] p-5 shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex flex-col md:flex-row gap-6">
-              {/* 이미지 영역 */}
-              {latestEvent.giftImageUrl && (
-                <div className="w-full md:w-40 h-40 flex-shrink-0 bg-gray-50 rounded-2xl border border-gray-100 overflow-hidden">
-                  <img
-                    src={latestEvent.giftImageUrl}
-                    alt={latestEvent.giftName}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-              )}
+        <div className="space-y-8">
+          {events.map((event) => {
+            const hasWinner = !!event.winner;
+            const winnerList = hasWinner ? event.winner!.split(',') : [];
 
-              {/* 텍스트 정보 영역 */}
-              <div className="flex-1 space-y-3">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <span className="inline-block bg-green-50 text-green-600 text-[10px] font-bold px-2 py-1 rounded-lg mb-2">
-                      Event ID: {latestEvent.eventId}
-                    </span>
-                    <h4 className="text-xl font-bold text-gray-800">{latestEvent.giftName}</h4>
-                  </div>
-                  <div className="text-right">
-                    <span className="block text-xs text-gray-400 font-medium mb-0.5">
-                      상품 수량
-                    </span>
-                    <span className="text-xl font-bold text-green-600">{latestEvent.count}개</span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
-                  <div className="bg-gray-50 p-3 rounded-xl border border-gray-100">
-                    <p className="text-xs text-gray-400 font-medium mb-1">총 누적 포인트</p>
-                    <p className="font-bold text-gray-700">
-                      {latestEvent.stats.totalAccumulatedPoints.toLocaleString()} P
-                    </p>
-                  </div>
-                  <div className="bg-gray-50 p-3 rounded-xl border border-gray-100">
-                    <p className="text-xs text-gray-400 font-medium mb-1">총 참여자 수</p>
-                    <p className="font-bold text-gray-700">
-                      {latestEvent.stats.totalParticipants.toLocaleString()} 명
-                    </p>
-                  </div>
-                </div>
-
-                <div className="text-xs text-gray-400 font-medium pt-3 border-t border-gray-100 flex items-center gap-1">
-                  <i className="ri-time-line"></i> 발표일:{' '}
-                  {formatDate(latestEvent.period.announcementDate)}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* 당첨자 결과 또는 추첨 버튼 */}
-          {winnerList.length > 0 ? (
-            <div className="p-8 bg-green-50 border border-green-100 rounded-[24px] text-center">
-              <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm text-green-500">
-                <i className="ri-medal-line text-3xl"></i>
-              </div>
-              <h4 className="text-sm font-bold text-green-600 mb-6 tracking-wide uppercase">
-                WINNER LIST ({winnerList.length}명)
-              </h4>
-
-              <div className="flex flex-wrap justify-center gap-2 mb-4">
-                {winnerList.map((winnerId, index) => (
-                  <span
-                    key={`${winnerId}-${index}`}
-                    className="inline-flex items-center px-4 py-2 rounded-full bg-white border border-green-200 text-green-700 font-bold shadow-sm"
-                  >
-                    <i className="ri-user-star-line mr-2 text-green-500"></i>
-                    {winnerId}
-                  </span>
-                ))}
-              </div>
-
-              <p className="text-sm text-green-500/80 mt-2 font-medium">
-                총 {winnerList.length}명의 당첨자가 확정되었습니다.
-              </p>
-            </div>
-          ) : (
-            <button
-              onClick={handleDraw}
-              disabled={isLoading}
-              className={`w-full rounded-2xl px-4 py-4 text-base font-bold text-white shadow-lg transition focus:outline-none focus:ring-4 focus:ring-green-100 active:scale-[0.98] flex items-center justify-center gap-2
-                ${
-                  isLoading
-                    ? 'bg-gray-300 cursor-not-allowed shadow-none'
-                    : 'bg-green-600 hover:bg-green-700 shadow-green-200'
+            return (
+              <div
+                key={event.eventId}
+                className={`bg-white border rounded-[20px] p-6 shadow-sm transition-all hover:shadow-md ${
+                  hasWinner ? 'border-green-200 bg-green-50/10' : 'border-gray-100'
                 }`}
-            >
-              {isLoading ? (
-                <>
-                  <i className="ri-loader-4-line animate-spin text-xl"></i>
-                  추첨 진행 중...
-                </>
-              ) : (
-                <>
-                  <i className="ri-magic-line text-xl"></i>이 행사 추첨 시작하기
-                </>
-              )}
-            </button>
-          )}
+              >
+                <div className="flex flex-col md:flex-row gap-6">
+                  {/* 왼쪽: 이미지 */}
+                  {event.giftImageUrl && (
+                    <div className="w-full md:w-48 h-48 flex-shrink-0 bg-gray-50 rounded-2xl border border-gray-100 overflow-hidden relative">
+                      <img
+                        src={event.giftImageUrl}
+                        alt={event.giftName}
+                        className="w-full h-full object-cover"
+                      />
+                      {hasWinner && (
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center backdrop-blur-[1px]">
+                          <span className="bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg">
+                            <i className="ri-check-line mr-1"></i>추첨 완료
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 오른쪽: 정보 및 액션 */}
+                  <div className="flex-1 flex flex-col justify-between">
+                    <div>
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <span className="inline-block bg-green-50 text-green-600 text-[10px] font-bold px-2 py-1 rounded-lg mb-2">
+                            ID: {event.eventId}
+                          </span>
+                          <h4 className="text-xl font-bold text-gray-800">{event.giftName}</h4>
+                        </div>
+                        <div className="text-right">
+                          <span className="block text-xs text-gray-400 font-medium mb-0.5">
+                            상품 수량
+                          </span>
+                          <span className="text-lg font-bold text-green-600">{event.count}개</span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 mb-4">
+                        <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-100">
+                          <p className="text-xs text-gray-400 font-medium mb-1">참여자</p>
+                          <p className="font-bold text-gray-700 text-sm">
+                            {event.stats.totalParticipants.toLocaleString()} 명
+                          </p>
+                        </div>
+                        <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-100">
+                          <p className="text-xs text-gray-400 font-medium mb-1">발표일</p>
+                          <p className="font-bold text-gray-700 text-sm">
+                            {formatDate(event.period.announcementDate).split('오전')[0]}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 하단: 결과 표시 or 추첨 버튼 */}
+                    <div className="pt-4 border-t border-gray-100 mt-2">
+                      {hasWinner ? (
+                        <div></div>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm text-gray-500">
+                            아직 당첨자가 추첨되지 않았습니다.
+                          </p>
+                          <button
+                            onClick={() => handleDraw(event)}
+                            disabled={drawingId === event.eventId}
+                            className={`px-6 py-2.5 rounded-xl font-bold text-white shadow-md transition-all active:scale-95 flex items-center gap-2
+                              ${
+                                drawingId === event.eventId
+                                  ? 'bg-gray-400 cursor-not-allowed'
+                                  : 'bg-green-600 hover:bg-green-700 shadow-green-200'
+                              }`}
+                          >
+                            {drawingId === event.eventId ? (
+                              <>
+                                <i className="ri-loader-4-line animate-spin"></i> 처리 중
+                              </>
+                            ) : (
+                              <>
+                                <i className="ri-magic-line"></i> 추첨하기
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
