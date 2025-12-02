@@ -128,13 +128,21 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
   }, []);
 
   const resetNavigation = () => {
+    if (activeMarkerIdRef.current) {
+      const activeKey = activeMarkerIdRef.current;
+      const marker = markersMapRef.current.get(activeKey);
+      if (marker) {
+        marker.setMap(null); // 지도 화면에서 제거
+        markersMapRef.current.delete(activeKey); // 메모리(Map)에서 제거
+      }
+      activeMarkerIdRef.current = null; // 활성 ID 초기화
+    }
     setSelectedPlace(null);
     setRouteInfo(null);
     setTbtInstruction(null);
     routePointsRef.current = [];
     setIsCompassMode(false);
     isArrivalProcessRef.current = false;
-    activeMarkerIdRef.current = null;
 
     if (resultRoutePolylineRef.current) {
       resultRoutePolylineRef.current.setMap(null);
@@ -145,10 +153,6 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
       if (typeof mapInstanceRef.current.setRotate === 'function') {
         mapInstanceRef.current.setRotate(0);
       }
-
-      mapInstanceRef.current.setCenter(
-        new window.Tmapv2.LatLng(myLocationRef.current.lat, myLocationRef.current.lng)
-      );
       fetchPlaces(mapInstanceRef.current);
     }
   };
