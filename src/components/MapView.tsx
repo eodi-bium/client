@@ -10,7 +10,6 @@ import type {
   ApiResponse,
   SelectedPlaceInfo,
   RouteInfo,
-  TmapLatLng,
   TmapMapInstance,
   TmapMarkerInstance,
   TmapPolylineInstance,
@@ -31,10 +30,12 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<TmapMapInstance | null>(null);
 
-  const markersRef = useRef<TmapMarkerInstance[]>([]);
-  const myLocationMarkerRef = useRef<TmapMarkerInstance | null>(null);
+  // [변경 1] 마커 관리를 위한 Map 사용 (Key: 장소식별자, Value: 마커인스턴스)
+  // 기존 배열 대신 Map을 사용하여 특정 마커의 존재 여부를 빠르게 파악합니다.
+  const markersMapRef = useRef<Map<string, TmapMarkerInstance>>(new Map());
 
-  const activeMarkerIndexRef = useRef<number | null>(null);
+  const myLocationMarkerRef = useRef<TmapMarkerInstance | null>(null);
+  const activeMarkerIdRef = useRef<string | null>(null); // Index 대신 ID(Key)로 관리
 
   const resultRoutePolylineRef = useRef<TmapPolylineInstance | null>(null);
   const routePointsRef = useRef<RouteFeature[]>([]);
@@ -58,9 +59,19 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
   useEffect(() => {
     selectedPlaceRef.current = selectedPlace;
   }, [selectedPlace]);
+
+  // [변경 2] 카테고리가 바뀌면 기존 마커들은 의미가 없으므로 싹 지워야 합니다.
   useEffect(() => {
     activeCategoryRef.current = activeCategory;
+    // 카테고리 변경 시 맵 초기화 (기존 마커들 제거)
+    if (markersMapRef.current.size > 0) {
+      markersMapRef.current.forEach((marker) => marker.setMap(null));
+      markersMapRef.current.clear();
+    }
+    // API 재호출을 유도하기 위해 places 비우기 (선택사항)
+    setPlaces([]);
   }, [activeCategory]);
+
   useEffect(() => {
     myLocationRef.current = myLocation;
   }, [myLocation]);
@@ -106,6 +117,7 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
       const data: ApiResponse = await response.json();
 
       if (data && data.singlePlaceResponses) {
+        // [중요] 여기서 setPlaces를 호출하면 아래 useEffect가 실행되어 Diffing 로직이 돕니다.
         setPlaces(data.singlePlaceResponses);
       } else {
         setPlaces([]);
@@ -122,7 +134,7 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
     routePointsRef.current = [];
     setIsCompassMode(false);
     isArrivalProcessRef.current = false;
-    activeMarkerIndexRef.current = null;
+    activeMarkerIdRef.current = null;
 
     if (resultRoutePolylineRef.current) {
       resultRoutePolylineRef.current.setMap(null);
@@ -223,6 +235,7 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
     }
   };
 
+  // Map 초기화 (최초 1회)
   useEffect(() => {
     const mapElement = mapContainerRef.current;
     if (!mapElement) return;
@@ -256,6 +269,7 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
     };
   }, []);
 
+  // 리사이즈 핸들러
   useEffect(() => {
     const handleResize = () => {
       if (mapInstanceRef.current && mapContainerRef.current) {
@@ -269,6 +283,7 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // 나침반 모드 핸들러
   useEffect(() => {
     const handleOrientation = (event: DeviceOrientationEvent) => {
       if (!isCompassMode || !mapInstanceRef.current) return;
@@ -291,6 +306,7 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
     return () => window.removeEventListener('deviceorientation', handleOrientation);
   }, [isCompassMode]);
 
+  // 위치 추적 핸들러
   useEffect(() => {
     if (!navigator.geolocation) return;
     const watchId = navigator.geolocation.watchPosition(
@@ -301,7 +317,6 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
 
         if (mapInstanceRef.current && window.Tmapv2) {
           const myLatLng = new window.Tmapv2.LatLng(lat, lng);
-
           const myIcon = routeInfo ? MARKER_IMAGES.START : MARKER_IMAGES.MY_LOCATION;
 
           if (myLocationMarkerRef.current) {
@@ -322,6 +337,7 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
             mapInstanceRef.current.setCenter(myLatLng);
           }
 
+          // 경로 안내 로직
           if (routeInfo && selectedPlace && !isArrivalProcessRef.current) {
             const distToDest = getDistanceFromLatLonInMeters(
               lat,
@@ -333,7 +349,6 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
             if (distToDest < 20) {
               isArrivalProcessRef.current = true;
               speak('목적지에 도착했습니다.');
-
               setTimeout(() => {
                 const confirmed = window.confirm('목적지에 도착했습니다! 안내를 종료합니다.');
                 if (confirmed || !confirmed) {
@@ -378,115 +393,119 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
     }
   }, [activeCategory]);
 
+  // 내 위치 마커 아이콘 업데이트
   useEffect(() => {
     if (myLocationMarkerRef.current && mapInstanceRef.current && window.Tmapv2) {
       const myIcon = routeInfo ? MARKER_IMAGES.START : MARKER_IMAGES.MY_LOCATION;
-      myLocationMarkerRef.current.setMap(null);
-
-      const pos = myLocationRef.current
-        ? new window.Tmapv2.LatLng(myLocationRef.current.lat, myLocationRef.current.lng)
-        : mapInstanceRef.current.getCenter();
-
-      myLocationMarkerRef.current = new window.Tmapv2.Marker({
-        position: pos,
-        map: mapInstanceRef.current,
-        title: '내 위치',
-        icon: myIcon,
-        iconSize: new window.Tmapv2.Size(32, 32),
-      });
+      myLocationMarkerRef.current.setIcon(myIcon);
     }
   }, [routeInfo]);
 
+  // [핵심 변경 3] 마커 렌더링 최적화 로직 (Diffing Algorithm)
   useEffect(() => {
     if (!mapInstanceRef.current || !window.Tmapv2) return;
 
-    markersRef.current.forEach((m) => m.setMap(null));
-    markersRef.current = [];
-    activeMarkerIndexRef.current = null;
-
+    // 1. 현재 보여줘야 할 장소 목록 결정
     let placesToRender = places;
     if (routeInfo && selectedPlace) {
       placesToRender = [selectedPlace];
     }
 
-    if (placesToRender.length > 0) {
-      let defaultIcon = MARKER_IMAGES.DEFAULT;
-      if (activeCategory === 'battery') defaultIcon = MARKER_IMAGES.BATTERY;
-      else if (activeCategory === 'light') defaultIcon = MARKER_IMAGES.LIGHT;
-      else if (activeCategory === 'clothes') defaultIcon = MARKER_IMAGES.CLOTHES;
+    // 2. 장소 식별을 위한 키 생성 함수 (ID가 없으면 좌표로 대체)
+    const getPlaceKey = (place: Place) =>
+      place.id ? String(place.id) : `${place.latitude}-${place.longitude}`;
 
-      let iconUrl = defaultIcon;
-      if (routeInfo) {
-        iconUrl = MARKER_IMAGES.END;
+    // 3. 현재 렌더링해야 할 모든 장소의 키 집합 생성
+    const newPlaceKeys = new Set(placesToRender.map(getPlaceKey));
+
+    // 4. [제거 단계] 더 이상 유효하지 않은(새 목록에 없는) 마커 제거
+    markersMapRef.current.forEach((marker, key) => {
+      if (!newPlaceKeys.has(key)) {
+        marker.setMap(null);
+        markersMapRef.current.delete(key);
       }
+    });
 
-      let index = 0;
-      let timeoutId: NodeJS.Timeout;
+    // 5. [추가/유지 단계] 마커 생성 및 관리
+    let defaultIcon = MARKER_IMAGES.DEFAULT;
+    if (activeCategory === 'battery') defaultIcon = MARKER_IMAGES.BATTERY;
+    else if (activeCategory === 'light') defaultIcon = MARKER_IMAGES.LIGHT;
+    else if (activeCategory === 'clothes') defaultIcon = MARKER_IMAGES.CLOTHES;
 
-      const createMarkerInstance = (index: number, place: Place, isBouncing: boolean) => {
-        let aniType = routeInfo ? null : window.Tmapv2.MarkerOptions.ANIMATE_BALLOON;
-        if (isBouncing) aniType = window.Tmapv2.MarkerOptions.ANIMATE_BOUNCE;
+    let iconUrl = defaultIcon;
+    if (routeInfo) {
+      iconUrl = MARKER_IMAGES.END;
+    }
 
-        const marker = new window.Tmapv2.Marker({
-          position: new window.Tmapv2.LatLng(place.latitude, place.longitude),
-          map: mapInstanceRef.current!,
-          title: place.name,
-          icon: iconUrl,
-          iconSize: new window.Tmapv2.Size(32, 32),
-          animation: aniType,
-          animationLength: 300,
-        });
+    // 마커 생성 함수
+    const createMarker = (place: Place, key: string, isBouncing: boolean) => {
+      let aniType = routeInfo ? null : window.Tmapv2.MarkerOptions.ANIMATE_BALLOON;
+      if (isBouncing) aniType = window.Tmapv2.MarkerOptions.ANIMATE_BOUNCE;
 
-        marker.addListener('click', () => {
-          if (routeInfo) return;
+      const marker = new window.Tmapv2.Marker({
+        position: new window.Tmapv2.LatLng(place.latitude, place.longitude),
+        map: mapInstanceRef.current!,
+        title: place.name,
+        icon: iconUrl,
+        iconSize: new window.Tmapv2.Size(32, 32),
+        animation: aniType,
+        animationLength: 300,
+      });
 
-          if (!places || places.length === 0) return;
+      // 클릭 이벤트 리스너 등록
+      marker.addListener('click', () => {
+        if (routeInfo) return;
 
-          const prevIdx = activeMarkerIndexRef.current;
-          if (prevIdx !== null && prevIdx !== index && markersRef.current[prevIdx]) {
-            const prevMarker = markersRef.current[prevIdx];
-            prevMarker.setMap(null);
-            if (places[prevIdx]) {
-              const restored = createMarkerInstance(prevIdx, places[prevIdx], false);
-              markersRef.current[prevIdx] = restored;
+        // 이전에 활성화된 마커가 있다면 일반 상태로 복구 (지우고 다시 그림)
+        const prevKey = activeMarkerIdRef.current;
+        if (prevKey && prevKey !== key) {
+          const prevMarkerInstance = markersMapRef.current.get(prevKey);
+          if (prevMarkerInstance) {
+            // 기존 마커 정보 찾기 (places 배열에서)
+            const prevPlace = places.find((p) => getPlaceKey(p) === prevKey);
+            if (prevPlace) {
+              prevMarkerInstance.setMap(null);
+              const restoredMarker = createMarker(prevPlace, prevKey, false);
+              markersMapRef.current.set(prevKey, restoredMarker);
             }
           }
-
-          marker.setMap(null);
-          const bouncing = createMarkerInstance(index, place, true);
-          markersRef.current[index] = bouncing;
-          activeMarkerIndexRef.current = index;
-
-          let distText = '';
-          if (myLocationRef.current) {
-            const d = getDistanceFromLatLonInMeters(
-              myLocationRef.current.lat,
-              myLocationRef.current.lng,
-              place.latitude,
-              place.longitude
-            );
-            distText = `${(d / 1000).toFixed(2)}km`;
-          }
-          setSelectedPlace({ ...place, distanceText: distText });
-          setIsTracking(false);
-        });
-
-        return marker;
-      };
-
-      const addNext = () => {
-        if (index >= placesToRender.length) return;
-        if (placesToRender[index]) {
-          const m = createMarkerInstance(index, placesToRender[index], false);
-          markersRef.current.push(m);
         }
-        index++;
-        timeoutId = setTimeout(addNext, 30);
-      };
-      addNext();
 
-      return () => clearTimeout(timeoutId);
-    }
+        // 현재 클릭한 마커 바운싱 처리 (지우고 바운싱으로 다시 그림)
+        marker.setMap(null);
+        const bouncingMarker = createMarker(place, key, true);
+        markersMapRef.current.set(key, bouncingMarker);
+        activeMarkerIdRef.current = key;
+
+        let distText = '';
+        if (myLocationRef.current) {
+          const d = getDistanceFromLatLonInMeters(
+            myLocationRef.current.lat,
+            myLocationRef.current.lng,
+            place.latitude,
+            place.longitude
+          );
+          distText = `${(d / 1000).toFixed(2)}km`;
+        }
+        setSelectedPlace({ ...place, distanceText: distText });
+        setIsTracking(false);
+      });
+
+      return marker;
+    };
+
+    // 6. 실제 순회하며 신규 마커 추가 (이미 있는 키는 건너뜀 = 최적화)
+    placesToRender.forEach((place) => {
+      const key = getPlaceKey(place);
+
+      // [최적화 핵심] 이미 지도에 있는 마커라면 건드리지 않음
+      if (!markersMapRef.current.has(key)) {
+        // 단, 현재 선택된 마커(바운싱 중인)라면 바운싱 상태로 그려야 할 수도 있음 (리렌더링 시)
+        // 하지만 여기 로직은 '새로 추가된 것'만 처리하므로 기본 상태로 그림
+        const newMarker = createMarker(place, key, false);
+        markersMapRef.current.set(key, newMarker);
+      }
+    });
   }, [places, activeCategory, routeInfo]);
 
   const handleCurrentLocationClick = () => {
