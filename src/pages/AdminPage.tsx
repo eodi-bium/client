@@ -363,7 +363,7 @@ const AddEventForm = () => {
 const DrawWinnerForm = () => {
   const axios = useAxios();
   const [latestEvent, setLatestEvent] = useState<EventResponse | null>(null);
-  const [winnerInfo, setWinnerInfo] = useState<string | null>(null);
+  const [winnerList, setWinnerList] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
   // 1. 최신 이벤트 정보 불러오기
@@ -378,9 +378,9 @@ const DrawWinnerForm = () => {
 
         // [핵심 변경] 이미 winner가 있으면 state에 저장하여 UI에 반영
         if (eventData.winner) {
-          setWinnerInfo(eventData.winner);
+          setWinnerList(eventData.winner.split(','));
         } else {
-          setWinnerInfo(null);
+          setWinnerList([]);
         }
       } catch (error) {
         console.error('Failed to fetch latest event:', error);
@@ -407,7 +407,8 @@ const DrawWinnerForm = () => {
       const resultData = response.data.body || response.data;
 
       // 추첨 성공 시 당첨자 업데이트
-      setWinnerInfo(resultData.winnerId);
+      const winnerString = resultData.winnerIds || resultData.winnerId || '';
+      setWinnerList(winnerString.split(','));
       alert('추첨이 성공적으로 완료되었습니다!');
     } catch (error: any) {
       console.error('Draw failed:', error);
@@ -499,18 +500,31 @@ const DrawWinnerForm = () => {
           </div>
 
           {/* [UI 분기 처리] winnerInfo가 있으면 당첨자 카드 표시, 없으면 추첨 버튼 표시 */}
-          {winnerInfo ? (
+          {winnerList.length > 0 ? (
             <div className="p-6 bg-indigo-50 border border-indigo-200 rounded-xl text-center animate-fade-in-up">
               <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm text-indigo-500">
                 <i className="ri-medal-line text-3xl"></i>
               </div>
-              <h4 className="text-sm font-bold text-indigo-500 mb-2 tracking-wide uppercase">
-                WINNER (추첨 완료)
+              <h4 className="text-sm font-bold text-indigo-500 mb-4 tracking-wide uppercase">
+                WINNER LIST ({winnerList.length}명)
               </h4>
-              <div className="text-3xl font-extrabold text-indigo-900 break-all mb-1">
-                {winnerInfo}
+
+              {/* [핵심 변경] 당첨자 리스트를 배지 형태로 출력 */}
+              <div className="flex flex-wrap justify-center gap-2 mb-2">
+                {winnerList.map((winnerId, index) => (
+                  <span
+                    key={`${winnerId}-${index}`}
+                    className="inline-flex items-center px-3 py-1.5 rounded-full bg-white border border-indigo-200 text-indigo-700 font-bold shadow-sm"
+                  >
+                    <i className="ri-user-star-line mr-1.5 text-indigo-500"></i>
+                    {winnerId}
+                  </span>
+                ))}
               </div>
-              <p className="text-sm text-indigo-400">이 이벤트는 이미 당첨자가 확정되었습니다.</p>
+
+              <p className="text-sm text-indigo-400 mt-3">
+                총 {winnerList.length}명의 당첨자가 확정되었습니다.
+              </p>
             </div>
           ) : (
             <button

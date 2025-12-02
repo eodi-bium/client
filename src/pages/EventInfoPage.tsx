@@ -313,8 +313,8 @@ export const EventInfoPage = () => {
 
   const isEventClosed = !!eventData.winner;
   // [추가] 내가 당첨자인지 여부 확인
-  const isMeWinner = !!(isLoggedIn && currentUserId && eventData.winner === currentUserId);
-
+  const winners = eventData.winner ? eventData.winner.split(',') : [];
+  const isMeWinner = !!(isLoggedIn && currentUserId && winners.includes(currentUserId));
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="fixed top-0 w-full bg-white z-50 px-4 py-3 flex items-center justify-between shadow-sm">
