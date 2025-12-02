@@ -365,25 +365,38 @@ const DrawWinnerForm = () => {
   const [latestEvent, setLatestEvent] = useState<EventResponse | null>(null);
   const [winnerList, setWinnerList] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-
+  const [noEvent, setNoEvent] = useState<boolean>(false);
   // 1. 최신 이벤트 정보 불러오기
   useEffect(() => {
     const fetchLatestEvent = async () => {
       try {
+        setNoEvent(false); // 초기화
         const response = await axios.get('/event/lastest');
         console.log('Latest Event Response:', response.data);
 
         const eventData = response.data.body || response.data;
+
+        // [변경] 데이터가 비어있는지 확인
+        if (!eventData) {
+          setNoEvent(true);
+          setLatestEvent(null);
+          return;
+        }
+
         setLatestEvent(eventData);
 
-        // [핵심 변경] 이미 winner가 있으면 state에 저장하여 UI에 반영
+        // 이미 winner가 있으면 state에 저장
         if (eventData.winner) {
           setWinnerList(eventData.winner.split(','));
         } else {
           setWinnerList([]);
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Failed to fetch latest event:', error);
+        // [변경] 404 에러 등 데이터가 없는 경우 처리
+        // (백엔드에서 데이터가 없을 때 404를 주는지, null을 주는지에 따라 다르지만 안전하게 처리)
+        setNoEvent(true);
+        setLatestEvent(null);
       }
     };
     fetchLatestEvent();
@@ -439,7 +452,16 @@ const DrawWinnerForm = () => {
         <h3 className="text-lg font-semibold text-slate-900">당첨자 추첨</h3>
       </div>
 
-      {!latestEvent ? (
+      {noEvent ? (
+        <div className="flex flex-col items-center justify-center py-16 text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-300">
+          <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4 text-slate-400">
+            <i className="ri-calendar-close-line text-3xl"></i>
+          </div>
+          <h4 className="text-lg font-medium text-slate-700 mb-1">진행 중인 행사가 없습니다</h4>
+          <p className="text-sm">새로운 행사를 등록해주세요.</p>
+        </div>
+      ) : !latestEvent ? (
+        /* 2. 데이터 로딩 중 (이벤트가 없지도 않고, 데이터도 아직 안 들어온 상태) */
         <div className="text-center py-10 text-slate-500">
           <i className="ri-loader-4-line text-3xl animate-spin mb-2 block"></i>
           최신 행사 정보를 불러오고 있습니다...
