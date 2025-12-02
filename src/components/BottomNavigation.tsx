@@ -16,15 +16,19 @@ const BottomNavigation: React.FC<BottomNavigationProps> = ({ items, onItemClick 
             className={`flex flex-col items-center justify-center space-y-1 cursor-pointer relative`}
             onClick={() => onItemClick(item.id)}
           >
-            {/* 마지막 아이템이 아닐 때만 오른쪽에 구분선 추가 */}
+            {/* 구분선 */}
             {index !== items.length - 1 && (
               <div className="absolute right-0 top-1/2 -translate-y-1/2 h-8 w-[1px] bg-gray-200"></div>
             )}
+
+            {/* 아이콘 색상 변경 */}
             <i
-              className={`${item.icon} text-lg ${item.active ? 'text-blue-600' : 'text-gray-400'}`}
+              className={`${item.icon} text-lg ${item.active ? 'text-green-600' : 'text-gray-400'}`}
             ></i>
+
+            {/* 텍스트 색상 변경 */}
             <span
-              className={`text-xs ${item.active ? 'text-blue-600 font-medium' : 'text-gray-400'}`}
+              className={`text-xs ${item.active ? 'text-green-600 font-medium' : 'text-gray-400'}`}
             >
               {item.label}
             </span>

@@ -13,21 +13,11 @@ export const MapPage = () => {
     type: item.id as DeviceType,
   }));
 
-  const handleBackClick = () => {
-    console.log('뒤로가기 클릭');
-  };
-
-  const handleSettingsClick = () => {
-    console.log('설정 클릭');
-  };
-
   return (
     // ★ [수정] h-screen과 overflow-hidden을 주어 전체 화면 고정
     <div className="h-screen w-full bg-gray-50 overflow-hidden flex flex-col">
-      {/* 헤더 */}
-      <Header onBackClick={handleBackClick} onSettingsClick={handleSettingsClick} />
+      <Header />
 
-      {/* 검색 및 필터 영역 (Fixed 대신 그냥 flow에 태우고 z-index만 관리해도 됩니다, 여기선 기존 구조 유지) */}
       <div className="fixed top-14 left-0 right-0 bg-gray-50 border-b border-gray-200 z-40">
         <div className="p-4 space-y-3">
           <CategoryFilter

@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAxios } from '../hooks/useAxios';
 import { useAuth } from '../context/AuthContext';
+import { Header } from '../components';
 
 // ----------------------------------------------------------------------
-// 1. 타입 정의
+// 1. 타입 정의 (기존 유지)
 // ----------------------------------------------------------------------
 
 type PointStat = {
@@ -12,9 +13,8 @@ type PointStat = {
   label: string;
   value: string;
   icon: string;
-  containerClassName: string;
-  iconClassName: string;
-  valueClassName?: string;
+  iconBgColor: string;
+  iconColor: string;
 };
 
 type EventDetail = {
@@ -48,7 +48,7 @@ interface UserEventStatus {
 }
 
 // ----------------------------------------------------------------------
-// 2. 헬퍼 함수들
+// 2. 헬퍼 함수들 (기존 유지)
 // ----------------------------------------------------------------------
 
 const clampPercentage = (value: number) => Math.max(0, Math.min(100, value));
@@ -62,10 +62,9 @@ const formatDateTime = (dateStr: string) => {
   const day = String(date.getDate()).padStart(2, '0');
   const hours = String(date.getHours()).padStart(2, '0');
   const minutes = String(date.getMinutes()).padStart(2, '0');
-  return `${year}.${month}.${day} ${hours}시 ${minutes}분`;
+  return `${year}.${month}.${day} ${hours}:${minutes}`;
 };
 
-// [추가] JWT 토큰에서 사용자 ID 추출하는 함수
 const getMemberIdFromToken = (token: string): string => {
   if (!token) return '';
   try {
@@ -94,20 +93,18 @@ const getMemberIdFromToken = (token: string): string => {
 export const EventInfoPage = () => {
   const navigate = useNavigate();
   const axiosInstance = useAxios();
-  const { isLoggedIn, isLoading, accessToken } = useAuth(); // accessToken 가져오기
+  const { isLoggedIn, isLoading, accessToken } = useAuth();
 
   const [eventData, setEventData] = useState<ActiveEventResponse | null>(null);
   const [userEventStatus, setUserEventStatus] = useState<UserEventStatus | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string>(''); // [추가] 현재 사용자 ID 상태
+  const [currentUserId, setCurrentUserId] = useState<string>('');
 
-  // 모달 상태 관리
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [isWinnerModalOpen, setIsWinnerModalOpen] = useState(false);
 
   const [betPoint, setBetPoint] = useState<string>('');
   const [currentPoint, setCurrentPoint] = useState<number>(0);
 
-  // [추가] 토큰이 변경될 때마다 사용자 ID 업데이트
   useEffect(() => {
     if (accessToken) {
       const id = getMemberIdFromToken(accessToken);
@@ -140,7 +137,6 @@ export const EventInfoPage = () => {
   const fetchEventData = useCallback(async () => {
     try {
       const response = await axiosInstance.get<ActiveEventResponse>('/event/lastest');
-      console.log(response.data);
       setEventData(response.data);
     } catch (error) {
       console.error('Failed to fetch event data:', error);
@@ -166,7 +162,6 @@ export const EventInfoPage = () => {
   };
 
   const handleCheckWinnerClick = () => {
-    // 로그인 안 된 상태에서 확인하려고 하면 로그인 유도
     if (!isLoggedIn) {
       if (window.confirm('당첨 결과를 확인하려면 로그인이 필요합니다.\n로그인 하시겠습니까?')) {
         handleLoginClick();
@@ -224,8 +219,8 @@ export const EventInfoPage = () => {
               label: '내 사용 포인트',
               value: `${formatNumber(userEventStatus.myPoints)} P`,
               icon: 'fas fa-user',
-              containerClassName: 'bg-blue-50',
-              iconClassName: 'bg-blue-500',
+              iconBgColor: 'bg-blue-50',
+              iconColor: 'text-blue-500',
             },
           ]
         : []),
@@ -234,24 +229,24 @@ export const EventInfoPage = () => {
         label: '총 모인 포인트',
         value: `${formatNumber(stats.totalAccumulatedPoints)} P`,
         icon: 'fas fa-coins',
-        containerClassName: 'bg-green-50',
-        iconClassName: 'bg-green-500',
+        iconBgColor: 'bg-green-50',
+        iconColor: 'text-green-600',
       },
       {
         id: 'participants',
         label: '총 참여자',
         value: `${formatNumber(stats.totalParticipants)} 명`,
         icon: 'fas fa-users',
-        containerClassName: 'bg-purple-50',
-        iconClassName: 'bg-purple-500',
+        iconBgColor: 'bg-purple-50',
+        iconColor: 'text-purple-500',
       },
     ];
 
     let eventDetailsData: EventDetail[] = [
       {
         id: 'count',
-        label: '상품 개수',
-        value: `${formatNumber(count)} 개`,
+        label: '상품 수량',
+        value: `${formatNumber(count)}개`,
         icon: 'fas fa-gift',
       },
     ];
@@ -259,8 +254,8 @@ export const EventInfoPage = () => {
     if (winner) {
       eventDetailsData.push({
         id: 'status',
-        label: '행사 상태',
-        value: '행사 마감',
+        label: '상태',
+        value: '마감',
         icon: 'fas fa-flag-checkered',
         valueClassName: 'text-red-500 font-bold',
       });
@@ -268,13 +263,13 @@ export const EventInfoPage = () => {
       eventDetailsData.push(
         {
           id: 'period',
-          label: '행사 기간',
-          value: `${formatDateTime(period.startDate)} - ${formatDateTime(period.endDate)}`,
-          icon: 'fas fa-calendar-alt',
+          label: '응모 기간',
+          value: `${formatDateTime(period.startDate)} ~ ${formatDateTime(period.endDate)}`,
+          icon: 'far fa-calendar-alt',
         },
         {
           id: 'announcement',
-          label: '당첨자 발표',
+          label: '발표일',
           value: formatDateTime(period.announcementDate),
           icon: 'fas fa-bullhorn',
         }
@@ -291,10 +286,6 @@ export const EventInfoPage = () => {
     };
   }, [eventData, userEventStatus, isLoggedIn]);
 
-  const handleBackClick = () => {
-    navigate(-1);
-  };
-
   const handleLoginClick = () => {
     const apiUrl = import.meta.env.VITE_BASE_URL;
     window.location.href = `${apiUrl}/oauth2/authorization/kakao`;
@@ -302,159 +293,188 @@ export const EventInfoPage = () => {
 
   if (!eventData) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-2">
-          <i className="fas fa-spinner fa-spin text-2xl text-orange-500"></i>
-          <span className="text-gray-500">정보를 불러오는 중...</span>
+      <div className="min-h-screen flex items-center justify-center bg-[#F8F9FA]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-4 border-green-200 border-t-green-500 rounded-full animate-spin"></div>
+          <div className="text-sm font-medium text-gray-500">행사 정보를 불러오는 중...</div>
         </div>
       </div>
     );
   }
 
   const isEventClosed = !!eventData.winner;
-  // [추가] 내가 당첨자인지 여부 확인
   const winners = eventData.winner ? eventData.winner.split(',') : [];
   const isMeWinner = !!(isLoggedIn && currentUserId && winners.includes(currentUserId));
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="fixed top-0 w-full bg-white z-50 px-4 py-3 flex items-center justify-between shadow-sm">
-        <button
-          type="button"
-          onClick={handleBackClick}
-          aria-label="이전 화면으로 이동"
-          className="cursor-pointer"
-        >
-          <i className="fas fa-arrow-left text-gray-700 text-lg" />
-        </button>
-        <h1 className="text-lg font-medium text-gray-900">행사정보</h1>
-        <button type="button" aria-label="추가 옵션" className="cursor-pointer">
-          <i className="fas fa-ellipsis-h text-gray-700 text-lg" />
-        </button>
-      </header>
 
-      <main className="pt-16 pb-24 px-4 space-y-6">
-        <section className="bg-white rounded-2xl p-6 shadow-sm">
-          <div className="flex flex-col items-center text-center">
-            <div className="w-48 h-32 mb-4 overflow-hidden rounded-xl bg-gray-100">
+  return (
+    <div className="min-h-screen bg-[#F8F9FA] pb-24 font-sans">
+      <Header />
+
+      {/* [수정] Grid 제거 -> flex-col(기본) 스택 구조로 변경, max-w-5xl 적용 */}
+      <main className="px-5 w-full max-w-5xl mx-auto space-y-6 pt-20">
+        {/* 1. 상품 이미지 & 타이틀 카드 */}
+        <section className="bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.1)] overflow-hidden">
+          <div className="relative bg-gradient-to-br from-green-50 to-green-100/50 p-6 flex justify-center items-center min-h-[300px]">
+            {/* 배경 장식 */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-white/40 rounded-full blur-3xl"></div>
+
+            {/* 이미지 컨테이너: 직사각형 */}
+            <div className="relative w-full max-w-2xl aspect-video bg-white rounded-2xl shadow-sm border-4 border-white overflow-hidden">
               <img
                 src={eventData.giftImageUrl}
                 alt={eventData.giftName}
-                className={`w-full h-full object-cover object-top ${isEventClosed ? 'grayscale opacity-80' : ''}`}
-                loading="lazy"
+                className={`w-full h-full object-cover transform hover:scale-105 transition-transform duration-500 ${isEventClosed ? 'grayscale opacity-70' : ''}`}
               />
-            </div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">{eventData.giftName}</h2>
-            <div className="flex flex-col items-center gap-2 text-sm text-gray-500 w-full">
-              {eventDetails.map((detail) => (
-                <div key={detail.id} className="flex items-center gap-2">
-                  {detail.icon && <i className={`${detail.icon} w-4 text-center`} aria-hidden />}
-                  <span className={detail.valueClassName}>
-                    {detail.label} : {detail.value}
+              {isEventClosed && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                  <span className="text-white font-bold text-xl border-2 border-white px-4 py-1 rounded-lg">
+                    종료된 행사
                   </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="p-6 text-center">
+            <h2 className="text-2xl font-bold text-gray-800 mb-2 leading-tight">
+              {eventData.giftName}
+            </h2>
+
+            {/* 메타 정보 뱃지들 */}
+            <div className="flex flex-wrap justify-center gap-2 mt-4">
+              {eventDetails.map((detail) => (
+                <div
+                  key={detail.id}
+                  className="inline-flex items-center px-3 py-1.5 bg-gray-50 rounded-lg text-xs font-medium text-gray-600 border border-gray-100"
+                >
+                  {detail.icon && <i className={`${detail.icon} mr-1.5 text-green-500`}></i>}
+                  <span className={detail.valueClassName}>{detail.value}</span>
                 </div>
               ))}
             </div>
           </div>
         </section>
 
-        {isEventClosed ? (
-          <button
-            type="button"
-            onClick={handleCheckWinnerClick}
-            className="w-full font-bold text-lg py-4 rounded-xl transition-colors shadow-lg bg-indigo-500 text-white active:bg-indigo-600 shadow-indigo-200"
-          >
-            <i className="fas fa-trophy mr-2"></i>
-            당첨 결과 확인하기
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={isLoggedIn ? handleJoinClick : handleLoginClick}
-            className={`w-full font-bold text-lg py-4 rounded-xl transition-colors shadow-lg ${
-              !isLoggedIn
-                ? 'bg-yellow-400 text-gray-900 active:bg-yellow-500 shadow-yellow-200'
-                : 'bg-orange-500 text-white active:bg-orange-600 shadow-orange-200'
-            }`}
-          >
-            {!isLoggedIn ? '로그인해서 참여하기' : '이벤트 참여하기'}
-          </button>
-        )}
-
-        <section className="bg-white rounded-2xl p-6 shadow-sm">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">포인트 현황</h3>
-          <div className="space-y-4">
+        {/* 2. 포인트 현황 */}
+        <section className="bg-white rounded-[24px] shadow-sm border border-gray-100 p-6">
+          <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <i className="fas fa-chart-pie text-green-500"></i> 포인트 현황
+          </h3>
+          <div className="space-y-3">
             {pointStats.map((stat) => (
               <div
                 key={stat.id}
-                className={`flex items-center justify-between p-4 rounded-xl ${stat.containerClassName}`}
+                className="flex items-center justify-between bg-gray-50/80 p-4 rounded-2xl hover:bg-gray-50 transition-colors"
               >
-                <div className="flex items-center">
+                <div className="flex items-center gap-3">
                   <div
-                    className={`w-10 h-10 ${stat.iconClassName} rounded-full flex items-center justify-center mr-3`}
+                    className={`w-10 h-10 ${stat.iconBgColor} rounded-full flex items-center justify-center shadow-sm`}
                   >
-                    <i className={`${stat.icon} text-white text-sm`} aria-hidden />
+                    <i className={`${stat.icon} ${stat.iconColor} text-lg`} />
                   </div>
-                  <div>
-                    <p className="text-sm text-gray-600">{stat.label}</p>
-                    <p
-                      className={`text-lg font-semibold text-gray-900 ${stat.valueClassName ?? ''}`}
-                    >
-                      {stat.value}
-                    </p>
-                  </div>
+                  <span className="text-gray-600 font-medium text-sm">{stat.label}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-gray-800 font-bold text-lg">{stat.value}</span>
                 </div>
               </div>
             ))}
           </div>
         </section>
 
+        {/* 3. 당첨 확률 Bar */}
         {isLoggedIn && userEventStatus && (
-          <section className="bg-white rounded-2xl p-6 shadow-sm">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">당첨 확률</h3>
-            <div className="text-center mb-4">
-              <div className="text-3xl font-bold text-orange-500 mb-2">{probabilityLabel}</div>
-              <p className="text-sm text-gray-600">현재 예상 당첨 확률</p>
+          <section className="bg-white rounded-[24px] shadow-sm border border-gray-100 p-6">
+            <div className="flex justify-between items-end mb-3">
+              <h3 className="text-lg font-bold text-gray-800">예상 당첨 확률</h3>
+              <span className="text-2xl font-extrabold text-green-600">{probabilityLabel}</span>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
+
+            <div className="w-full bg-gray-100 rounded-full h-4 overflow-hidden shadow-inner">
               <div
-                className="bg-gradient-to-r from-orange-400 to-orange-500 h-3 rounded-full"
+                className="bg-gradient-to-r from-green-300 to-green-600 h-full rounded-full transition-all duration-1000 ease-out relative"
                 style={{ width: progressWidth }}
-                aria-label={`당첨 확률 ${probabilityLabel}`}
-              />
+              >
+                <div className="absolute top-0 left-0 w-full h-full bg-white/20 animate-pulse"></div>
+              </div>
             </div>
-            <div className="flex justify-between text-xs text-gray-500">
+            <div className="flex justify-between mt-2 text-xs text-gray-400 font-medium px-1">
               <span>0%</span>
-              <span>50%</span>
               <span>100%</span>
             </div>
           </section>
         )}
+
+        {/* 4. 하단 버튼 영역 */}
+        <div className="pt-2">
+          {isEventClosed ? (
+            <button
+              type="button"
+              onClick={handleCheckWinnerClick}
+              className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-[20px] shadow-lg shadow-indigo-200 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+            >
+              <i className="fas fa-trophy text-lg mb-0.5"></i>
+              당첨 결과 확인하기
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={isLoggedIn ? handleJoinClick : handleLoginClick}
+              className={`w-full py-4 text-white font-bold rounded-[20px] shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2 ${
+                !isLoggedIn
+                  ? 'bg-[#FEE500] hover:bg-[#FDD835] text-[#3c1e1e] shadow-yellow-100' // 카카오는 노란색 유지
+                  : 'bg-green-600 hover:bg-green-700 shadow-green-200' // 참여는 Green
+              }`}
+            >
+              {!isLoggedIn ? (
+                <>
+                  <i className="ri-kakao-talk-fill text-xl"></i>
+                  로그인하고 참여하기
+                </>
+              ) : (
+                <>
+                  <i className="fas fa-hand-holding-heart text-lg"></i>
+                  이벤트 참여하기
+                </>
+              )}
+            </button>
+          )}
+        </div>
       </main>
 
-      {/* Participation Modal */}
+      {/* ---------------------------------------------------------------------- */}
+      {/* Modals */}
+      {/* ---------------------------------------------------------------------- */}
+
+      {/* 1. 참여 Modal */}
       {isJoinModalOpen && eventData && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm transition-opacity">
-          <div className="bg-white w-full sm:w-[400px] rounded-t-2xl sm:rounded-2xl p-6 shadow-2xl animate-slide-up">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-[2px] p-0 sm:p-4">
+          <div className="bg-white w-full sm:max-w-sm rounded-t-[32px] sm:rounded-[32px] p-8 shadow-2xl animate-slide-up">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-bold text-gray-900">이벤트 참여</h3>
               <button
                 type="button"
                 onClick={() => setIsJoinModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 p-1"
+                className="w-8 h-8 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center hover:bg-gray-200 transition-colors"
               >
-                <i className="fas fa-times text-xl" />
+                <i className="fas fa-times" />
               </button>
             </div>
 
             <div className="space-y-6">
-              <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
-                <p className="text-sm text-gray-500 mb-1">내 보유 포인트</p>
-                <p className="text-2xl font-bold text-gray-900">{formatNumber(currentPoint)} P</p>
+              <div className="bg-gray-50 p-5 rounded-2xl border border-gray-100 text-center">
+                <p className="text-sm text-gray-500 mb-1">현재 내 포인트</p>
+                <p className="text-2xl font-extrabold text-gray-900">
+                  {formatNumber(currentPoint)} P
+                </p>
               </div>
 
               <div>
-                <label htmlFor="betPoint" className="block text-sm font-medium text-gray-700 mb-2">
-                  사용할 포인트
+                <label
+                  htmlFor="betPoint"
+                  className="block text-sm font-bold text-gray-700 mb-2 px-1"
+                >
+                  얼마나 사용할까요?
                 </label>
                 <div className="relative">
                   <input
@@ -463,18 +483,18 @@ export const EventInfoPage = () => {
                     value={betPoint}
                     onChange={(e) => setBetPoint(e.target.value)}
                     placeholder="0"
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none transition-all text-lg font-medium"
+                    className="w-full px-4 py-4 rounded-2xl border border-gray-200 focus:border-green-500 focus:ring-4 focus:ring-green-100 outline-none transition-all text-lg font-bold text-gray-800 placeholder:font-normal"
                   />
                   <button
                     type="button"
                     onClick={() => setBetPoint(currentPoint.toString())}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-orange-500 bg-orange-50 px-2.5 py-1.5 rounded-lg hover:bg-orange-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-green-600 bg-green-100 px-3 py-1.5 rounded-lg hover:bg-green-200 transition-colors"
                   >
-                    전액사용
+                    전액
                   </button>
                 </div>
-                <p className="mt-2 text-xs text-gray-500">
-                  * 한 번 참여한 포인트는 환불되지 않습니다.
+                <p className="mt-2 text-xs text-gray-400 px-1">
+                  * 참여한 포인트는 반환되지 않습니다.
                 </p>
               </div>
 
@@ -482,14 +502,14 @@ export const EventInfoPage = () => {
                 <button
                   type="button"
                   onClick={() => setIsJoinModalOpen(false)}
-                  className="flex-1 py-3.5 text-gray-600 font-medium bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors"
+                  className="flex-1 py-4 text-gray-500 font-bold bg-gray-100 rounded-2xl hover:bg-gray-200 transition-colors"
                 >
                   취소
                 </button>
                 <button
                   type="button"
                   onClick={handleJoinSubmit}
-                  className="flex-1 py-3.5 text-white font-bold bg-orange-500 rounded-xl hover:bg-orange-600 shadow-lg shadow-orange-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 py-4 text-white font-bold bg-green-600 rounded-2xl hover:bg-green-700 shadow-lg shadow-green-200 transition-colors disabled:opacity-50 disabled:shadow-none"
                   disabled={!betPoint || Number(betPoint) <= 0}
                 >
                   참여하기
@@ -500,59 +520,62 @@ export const EventInfoPage = () => {
         </div>
       )}
 
-      {/* [수정] My Result Modal (나의 당첨 여부 확인) */}
+      {/* 2. 당첨 확인 Modal */}
       {isWinnerModalOpen && eventData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-opacity px-4">
-          <div className="bg-white w-full max-w-sm rounded-2xl p-8 shadow-2xl relative animate-bounce-in text-center">
-            <button
-              type="button"
-              onClick={() => setIsWinnerModalOpen(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
-            >
-              <i className="fas fa-times text-xl" />
-            </button>
-
-            {/* 당첨 여부에 따른 UI 분기 */}
-            {isMeWinner ? (
-              <>
-                <div className="w-20 h-20 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <i className="fas fa-trophy text-4xl text-yellow-500 animate-pulse"></i>
-                </div>
-                <h3 className="text-2xl font-bold text-gray-900 mb-2">축하합니다!</h3>
-                <p className="text-gray-600 mb-6">
-                  회원님이 이번 행사의 <br />
-                  <span className="text-indigo-600 font-bold">주인공</span>이 되셨습니다!
-                </p>
-                <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-200 mb-6">
-                  <p className="text-sm font-semibold text-yellow-700">
-                    관리자에게 문의하여 상품을 수령하세요.
-                  </p>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <i className="fas fa-sad-tear text-4xl text-gray-400"></i>
-                </div>
-                <h3 className="text-2xl font-bold text-gray-900 mb-2">아쉽네요...</h3>
-                <p className="text-gray-600 mb-6">
-                  이번 행사에는 당첨되지 않았습니다.
-                  <br />
-                  다음 기회를 노려보세요!
-                </p>
-              </>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-[2px] p-6">
+          <div className="bg-white w-full max-w-sm rounded-[32px] p-8 shadow-2xl relative animate-bounce-in text-center overflow-hidden">
+            {isMeWinner && (
+              <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-yellow-50 to-white -z-10"></div>
             )}
 
             <button
               type="button"
               onClick={() => setIsWinnerModalOpen(false)}
-              className={`w-full py-3.5 text-white font-bold rounded-xl shadow-lg transition-colors ${
+              className="absolute top-5 right-5 text-gray-300 hover:text-gray-500 transition-colors"
+            >
+              <i className="fas fa-times text-xl" />
+            </button>
+
+            {isMeWinner ? (
+              <div className="py-4">
+                <div className="w-24 h-24 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+                  <i className="fas fa-trophy text-5xl text-yellow-500 animate-pulse drop-shadow-sm"></i>
+                </div>
+                <h3 className="text-2xl font-extrabold text-gray-800 mb-2">당첨을 축하해요!</h3>
+                <p className="text-gray-600 mb-8 leading-relaxed text-sm">
+                  이번 행사의 주인공은 바로
+                  <br />
+                  <span className="text-green-600 font-bold text-lg">회원님</span>입니다! 🎉
+                </p>
+
+                <div className="bg-green-50 p-4 rounded-2xl border border-green-100 mb-6 text-xs text-green-700 font-medium">
+                  관리자에게 연락하여 상품 수령 방법을 안내받으세요.
+                </div>
+              </div>
+            ) : (
+              <div className="py-4">
+                <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <i className="fas fa-heart-broken text-4xl text-gray-400"></i>
+                </div>
+                <h3 className="text-2xl font-bold text-gray-800 mb-2">아쉬워요...</h3>
+                <p className="text-gray-500 mb-8 text-sm leading-relaxed">
+                  이번에는 당첨되지 않았어요.
+                  <br />
+                  다음 기회에 다시 도전해보세요!
+                </p>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setIsWinnerModalOpen(false)}
+              className={`w-full py-4 text-white font-bold rounded-2xl shadow-lg transition-all active:scale-[0.98] ${
                 isMeWinner
-                  ? 'bg-yellow-500 hover:bg-yellow-600 shadow-yellow-200'
-                  : 'bg-gray-500 hover:bg-gray-600 shadow-gray-200'
+                  ? 'bg-green-600 hover:bg-green-700 shadow-green-200'
+                  : 'bg-gray-800 hover:bg-gray-900 shadow-gray-200'
               }`}
             >
-              확인
+              확인완료
             </button>
           </div>
         </div>

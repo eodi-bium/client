@@ -18,10 +18,10 @@ const CategoryFilter: React.FC<CategoryFilterProps> = ({
         <button
           key={category.id}
           onClick={() => onCategoryChange(category.id)}
-          className={`flex items-center space-x-2 px-3 py-2 rounded-full text-sm font-medium whitespace-nowrap cursor-pointer ${
+          className={`flex items-center space-x-2 px-3 py-2 rounded-full text-sm font-medium whitespace-nowrap cursor-pointer transition-colors duration-200 border ${
             activeCategory === category.id
-              ? 'bg-blue-600 text-white'
-              : 'bg-white text-gray-600 border border-gray-300'
+              ? 'bg-green-600 text-white border-green-600'
+              : 'bg-white text-gray-600 border-gray-300'
           }`}
         >
           <i className={`${category.icon} text-xs`}></i>
@@ -33,4 +33,3 @@ const CategoryFilter: React.FC<CategoryFilterProps> = ({
 };
 
 export default CategoryFilter;
-
