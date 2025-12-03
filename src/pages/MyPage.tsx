@@ -134,8 +134,7 @@ export const MyPage = () => {
 
   // 추가 데이터 로딩 함수 (다음 페이지 호출)
   const fetchMoreEvents = useCallback(async () => {
-    if (isFetchingMore || !hasNextPage) return;
-
+    if (!accessToken || isFetchingMore || !hasNextPage) return;
     setIsFetchingMore(true);
     try {
       // [주의] 백엔드에 별도의 이벤트 페이징 API (/events)가 필요합니다.
@@ -161,8 +160,7 @@ export const MyPage = () => {
     } finally {
       setIsFetchingMore(false);
     }
-  }, [isFetchingMore, hasNextPage, currentPage, axios]);
-
+  }, [isFetchingMore, hasNextPage, currentPage, axios, accessToken]);
   // IntersectionObserver 설정 (마지막 요소 감지)
   const lastEventElementRef = useCallback(
     (node: HTMLDivElement) => {
