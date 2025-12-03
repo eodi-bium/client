@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAxios } from '../hooks/useAxios';
 import { useAuth } from '../context/AuthContext';
 import { Header } from '../components';
@@ -98,7 +97,6 @@ const getMemberIdFromToken = (token: string): string => {
 // ----------------------------------------------------------------------
 
 export const EventInfoPage = () => {
-  const navigate = useNavigate();
   const axiosInstance = useAxios();
   const { isLoggedIn, isLoading, accessToken } = useAuth();
 

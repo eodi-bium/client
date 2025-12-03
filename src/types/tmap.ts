@@ -1,4 +1,5 @@
 export interface Place {
+  id?: number | string;
   name: string;
   latitude: number;
   longitude: number;
@@ -53,6 +54,7 @@ export interface TmapMarkerInstance {
   setMap: (map: TmapMapInstance | null) => void;
   setPosition: (latLng: TmapLatLng) => void;
   addListener: (eventType: string, callback: (e: any) => void) => void;
+  setIcon: (icon: string) => void;
 }
 
 export interface TmapPolylineInstance {
