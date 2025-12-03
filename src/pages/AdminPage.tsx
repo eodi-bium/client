@@ -1,5 +1,5 @@
 import { type FormEvent, useState, useEffect } from 'react';
-import { useSearchParams, useNavigate, resolvePath } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAxios } from '../hooks/useAxios';
 import { useAuth } from '../context/AuthContext';
 import { adminItemOptions } from '../data/admin';
@@ -43,9 +43,6 @@ interface SingleEvent {
   winner?: string | null;
 }
 
-interface EventListResponse {
-  events: SingleEvent[];
-}
 // ----------------------------------------------------------------------
 // 2. 공통 헤더 컴포넌트
 // ----------------------------------------------------------------------
@@ -507,7 +504,6 @@ const DrawWinnerForm = () => {
         <div className="space-y-8">
           {events.map((event) => {
             const hasWinner = !!event.winner;
-            const winnerList = hasWinner ? event.winner!.split(',') : [];
 
             return (
               <div

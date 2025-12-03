@@ -8,6 +8,10 @@ export interface Device {
   position: {
     lat?: number;
     lng?: number;
+    top?: string | number;
+    left?: string | number;
+    right?: string | number;
+    bottom?: string | number;
   };
 }
 
@@ -24,4 +28,3 @@ export type NavItem = {
   icon: string;
   active: boolean;
 };
-
