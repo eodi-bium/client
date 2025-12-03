@@ -136,7 +136,6 @@ export const EventInfoPage = () => {
       }
     } catch (error) {
       console.error('Failed to fetch events:', error);
-      alert('이벤트 목록을 불러오는데 실패했습니다.');
     }
   }, [axiosInstance]);
 
