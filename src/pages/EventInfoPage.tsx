@@ -668,7 +668,7 @@ export const EventInfoPage = () => {
                   </button>
                 </div>
                 <p className="mt-2 text-xs text-gray-400 px-1">
-                  * 참여한 포인트는 반환되지 않습니다.
+                  * 당첨되지 않은 포인트는 반환됩니다.
                 </p>
               </div>
               <div className="flex gap-3 pt-2">
