@@ -27,7 +27,6 @@ export const useLoginRedirect = () => {
 
           // 저장된 이전 경로 확인
           const prevPath = sessionStorage.getItem('prevPath');
-          console.log(prevPath);
           if (prevPath) {
             navigate(prevPath, { replace: true });
           } else {
