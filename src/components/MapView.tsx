@@ -42,6 +42,9 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
   const lastSpokenTextRef = useRef<string>('');
   const isArrivalProcessRef = useRef(false);
 
+  // [모바일 수정 1] 드래그 상태를 추적하여 터치 씹힘/오작동 방지
+  const isMapDraggingRef = useRef(false);
+
   const [places, setPlaces] = useState<Place[]>([]);
   const [myLocation, setMyLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [selectedPlace, setSelectedPlace] = useState<SelectedPlaceInfo | null>(null);
@@ -260,8 +263,20 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
           if (mapInstanceRef.current) fetchPlaces(mapInstanceRef.current);
         };
 
-        map.addListener('dragstart', () => setIsTracking(false));
-        map.addListener('dragend', updateMapData);
+        // [모바일 수정 2] 드래그 시작/종료 처리 및 클릭 방지 딜레이 적용
+        map.addListener('dragstart', () => {
+          isMapDraggingRef.current = true;
+          setIsTracking(false);
+        });
+
+        map.addListener('dragend', () => {
+          // 손을 떼는 순간 클릭으로 인식되는 것을 막기 위해 0.2초 딜레이
+          setTimeout(() => {
+            isMapDraggingRef.current = false;
+          }, 200);
+          updateMapData();
+        });
+
         map.addListener('zoom_changed', updateMapData);
         map.addListener('click', () => {});
       }
@@ -379,7 +394,7 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
               if (tbtInstruction !== desc) {
                 setTbtInstruction(desc);
                 setTbtDistance('잠시 후');
-                speak(desc);
+                speak('잠시 후' + desc);
               }
             }
           }
@@ -456,8 +471,10 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
         animationLength: 300,
       });
 
-      // 클릭 이벤트 리스너 등록
-      marker.addListener('click', () => {
+      // [모바일 수정 3] 마커 동작 핸들러 분리 및 방어 코드 추가
+      const handleMarkerAction = () => {
+        // 지도가 드래그 중이라면 클릭 무시
+        if (isMapDraggingRef.current) return;
         if (routeInfo) return;
 
         // 이전에 활성화된 마커가 있다면 일반 상태로 복구 (지우고 다시 그림)
@@ -493,7 +510,11 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
         }
         setSelectedPlace({ ...place, distanceText: distText });
         setIsTracking(false);
-      });
+      };
+
+      // 클릭 이벤트 리스너 등록 (click + touchend 동시 지원)
+      marker.addListener('click', handleMarkerAction);
+      marker.addListener('touchend', handleMarkerAction);
 
       return marker;
     };
@@ -526,7 +547,12 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
 
   return (
     <div className="relative w-full h-full">
-      <div ref={mapContainerRef} className="w-full h-full bg-gray-200" />
+      <div
+        ref={mapContainerRef}
+        className="w-full h-full bg-gray-200"
+        // [모바일 수정 4] 브라우저 기본 터치 동작 제어 (필수)
+        style={{ touchAction: 'none' }}
+      />
 
       {routeInfo && tbtInstruction && (
         <NavigationOverlay instruction={tbtInstruction} distanceToNext={tbtDistance} />
@@ -537,7 +563,9 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
         className={`absolute bottom-6 right-4 z-40 bg-white p-3 rounded-full shadow-lg border transition-colors ${
           isTracking ? 'text-blue-500 border-blue-500' : 'text-gray-600 border-gray-200'
         }`}
-        style={{ bottom: selectedPlace ? '240px' : '80px' }}
+        // [모바일 수정 5] 조준경 위치 상향 조정 (모바일 하단 바 대응)
+        // 기본 80px -> 120px, 선택시 240px -> 280px 로 40px씩 올림
+        style={{ bottom: selectedPlace ? '280px' : '120px' }}
       >
         <i
           className={`fas fa-crosshairs text-xl ${isCompassMode ? 'animate-pulse text-red-500' : ''}`}
