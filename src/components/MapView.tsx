@@ -248,7 +248,7 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
       if (!window.Tmapv2) return;
       if (!mapInstanceRef.current) {
         const map = new window.Tmapv2.Map(mapElement, {
-          center: new window.Tmapv2.LatLng(37.5665, 126.978),
+          center: new window.Tmapv2.LatLng(37.45, 126.6535),
           width: '100%',
           height: '100%',
           zoom: 17,

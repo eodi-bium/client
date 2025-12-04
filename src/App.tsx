@@ -6,6 +6,7 @@ import { AdminPage } from './pages/AdminPage';
 import { EventInfoPage } from './pages/EventInfoPage';
 import { MyPage } from './pages/MyPage';
 import { LoginRedirectPage } from './pages/LoginRedirectPage';
+import { NotFoundPage } from './pages/NotFoundPage';
 import type { NavItem } from './types';
 import { useAuth } from './context/AuthContext';
 
@@ -34,7 +35,7 @@ function App() {
 
   // 페이지 이동 시 현재 경로 저장 (로그인 리다이렉트용)
   useEffect(() => {
-    if (location.pathname !== '/redirect/login') {
+    if (!location.pathname.startsWith('/redirect')) {
       sessionStorage.setItem('prevPath', location.pathname);
     }
   }, [location.pathname]);
@@ -97,10 +98,11 @@ function App() {
       <Routes>
         <Route path="/" element={<MapPage />} />
         <Route path="/my" element={<MyPage />} />
-        <Route path="/admin" element={<AdminPage />} />
-        <Route path="/process-qr" element={<AdminPage />} />
+        <Route path="/admin" element={isAdmin ? <AdminPage /> : <NotFoundPage />} />
+        <Route path="/process-qr" element={isAdmin ? <AdminPage /> : <NotFoundPage />} />
         <Route path="/event-info" element={<EventInfoPage />} />
         <Route path="/redirect/login" element={<LoginRedirectPage />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
 
       <BottomNavigation items={navItems} onItemClick={handleNavClick} />
