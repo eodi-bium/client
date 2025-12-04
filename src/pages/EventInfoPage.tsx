@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useAxios } from '../hooks/useAxios';
 import { useAuth } from '../context/AuthContext';
 import { Header } from '../components';
 
 // ----------------------------------------------------------------------
-// 1. 타입 정의 (업데이트됨)
+// 1. 타입 정의 (업데이트됨 - Page 구조 반영)
 // ----------------------------------------------------------------------
 
 type PointStat = {
@@ -24,7 +24,19 @@ type EventDetail = {
   icon?: string;
 };
 
-// [UPDATED] 단일 이벤트 정보 구조
+// [UPDATED] 공통 Page 인터페이스 정의
+interface Page<T> {
+  content: T[];
+  last: boolean;
+  totalElements: number;
+  totalPages: number;
+  size: number;
+  number: number;
+  first: boolean;
+  numberOfElements: number;
+  empty: boolean;
+}
+
 interface SingleEventResponse {
   eventId: number;
   giftName: string;
@@ -42,9 +54,9 @@ interface SingleEventResponse {
   winner: string | null;
 }
 
-// [UPDATED] 전체 응답 구조
+// [UPDATED] 전체 응답 구조 (List -> Page)
 interface EventResponse {
-  events: SingleEventResponse[];
+  events: Page<SingleEventResponse>;
 }
 
 interface UserEventStatus {
@@ -100,9 +112,17 @@ export const EventInfoPage = () => {
   const axiosInstance = useAxios();
   const { isLoggedIn, isLoading, accessToken } = useAuth();
 
-  // [UPDATED] 상태 관리 변경: 전체 목록 vs 선택된 단일 이벤트
+  // [UPDATED] 상태 관리: 데이터 누적 및 페이징 상태
   const [allEvents, setAllEvents] = useState<SingleEventResponse[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<SingleEventResponse | null>(null);
+
+  // 페이징 관련 State
+  const [page, setPage] = useState<number>(0);
+  const [hasNext, setHasNext] = useState<boolean>(true);
+  const [isFetching, setIsFetching] = useState<boolean>(false);
+
+  // 무한 스크롤 Observer Ref
+  const observerRef = useRef<IntersectionObserver | null>(null);
 
   const [userEventStatus, setUserEventStatus] = useState<UserEventStatus | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string>('');
@@ -124,26 +144,62 @@ export const EventInfoPage = () => {
     }
   }, [accessToken]);
 
-  // [UPDATED] 전체 이벤트 목록 조회 (/event/all)
-  const fetchAllEvents = useCallback(async () => {
-    try {
-      const response = await axiosInstance.get<EventResponse>('/event/all');
-      // 응답 구조: { events: [...] }
-      if (response.data && response.data.events) {
-        setAllEvents(response.data.events);
-      } else {
-        setAllEvents([]);
-      }
-    } catch (error) {
-      console.error('Failed to fetch events:', error);
-      alert('이벤트 목록을 불러오는데 실패했습니다.');
-    }
-  }, [axiosInstance]);
+  // [UPDATED] 이벤트 목록 조회 함수 (페이지 기반)
+  const fetchEvents = useCallback(
+    async (pageNum: number) => {
+      // 더 이상 페이지가 없거나 이미 로딩 중이면 중단
+      if (!hasNext && pageNum > 0) return;
 
-  // 초기 로딩
+      setIsFetching(true);
+      try {
+        const response = await axiosInstance.get<EventResponse>('/event/all', {
+          params: {
+            page: pageNum,
+            size: 10, // 한 번에 가져올 개수 (백엔드 기본값과 맞춰도 됨)
+            // sort: 'id,DESC' // 백엔드 @PageableDefault로 설정되어 있으므로 생략 가능
+          },
+        });
+
+        const pageData = response.data.events;
+
+        setAllEvents((prev) => {
+          // 첫 페이지면 덮어쓰기, 아니면 이어붙이기
+          if (pageNum === 0) return pageData.content;
+          return [...prev, ...pageData.content];
+        });
+
+        setHasNext(!pageData.last); // 마지막 페이지가 아니면 true
+      } catch (error) {
+        console.error('Failed to fetch events:', error);
+      } finally {
+        setIsFetching(false);
+      }
+    },
+    [axiosInstance, hasNext]
+  );
+
+  // [UPDATED] page 상태가 변경될 때마다 데이터 요청
   useEffect(() => {
-    fetchAllEvents();
-  }, [fetchAllEvents]);
+    fetchEvents(page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]); // fetchEvents는 의존성에서 제외하여 중복 호출 방지 (혹은 useCallback으로 감싸기)
+
+  // [UPDATED] 마지막 요소 감지용 Ref Callback
+  const lastEventRef = useCallback(
+    (node: HTMLDivElement) => {
+      if (isFetching) return;
+      if (observerRef.current) observerRef.current.disconnect();
+
+      observerRef.current = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && hasNext) {
+          setPage((prevPage) => prevPage + 1);
+        }
+      });
+
+      if (node) observerRef.current.observe(node);
+    },
+    [isFetching, hasNext]
+  );
 
   // 선택된 이벤트에 대한 내 정보 조회
   const fetchUserEventStatus = useCallback(async () => {
@@ -184,6 +240,8 @@ export const EventInfoPage = () => {
   const handleBackToList = () => {
     setSelectedEvent(null);
     setUserEventStatus(null);
+    // 목록으로 돌아올 때 스크롤 위치 유지나 데이터 리셋이 필요하다면 여기서 처리
+    // 현재는 allEvents가 유지되므로 스크롤 위치만 신경 쓰면 됨 (브라우저 기본 동작 활용)
   };
 
   const handleJoinClick = () => {
@@ -227,8 +285,11 @@ export const EventInfoPage = () => {
       });
       alert('참여가 완료되었습니다!');
       setIsJoinModalOpen(false);
-      // 데이터 갱신
-      fetchAllEvents();
+
+      // 데이터 갱신 (참여한 이벤트 정보만 업데이트하거나, 목록을 새로고침)
+      // 여기서는 간편하게 현재 페이지만 리프레시하거나 전체를 다시 불러옴
+      // UX상 전체 리로드는 스크롤이 튀므로, fetchUserEventStatus만 호출하고
+      // 목록 데이터 갱신은 나중에 생각하거나 Optimistic Update 적용 권장
       fetchUserEventStatus();
     } catch (error) {
       console.error('Failed to join event:', error);
@@ -349,18 +410,22 @@ export const EventInfoPage = () => {
               <p className="text-gray-500">포인트를 사용하여 상품에 응모해보세요!</p>
             </div>
 
-            {allEvents.length === 0 ? (
+            {allEvents.length === 0 && !isFetching ? (
               <div className="py-20 text-center text-gray-400 bg-white rounded-[24px] border border-gray-100 shadow-sm">
                 <i className="ri-inbox-archive-line text-4xl mb-3 block"></i>
                 <p>현재 진행 중인 이벤트가 없습니다.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {allEvents.map((event) => {
+                {allEvents.map((event, index) => {
                   const isClosed = !!event.winner;
+                  // [UPDATED] 마지막 요소에 ref 할당하여 무한 스크롤 트리거
+                  const isLastElement = index === allEvents.length - 1;
+
                   return (
                     <div
-                      key={event.eventId}
+                      key={`${event.eventId}-${index}`} // Key 중복 방지 (데이터 중복 대비)
+                      ref={isLastElement ? lastEventRef : null}
                       onClick={() => handleEventClick(event)}
                       className="group bg-white rounded-[24px] border border-gray-100 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)] overflow-hidden cursor-pointer hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
                     >
@@ -406,10 +471,17 @@ export const EventInfoPage = () => {
                 })}
               </div>
             )}
+
+            {/* 로딩 인디케이터 (하단) */}
+            {isFetching && (
+              <div className="flex justify-center py-8">
+                <div className="w-8 h-8 border-4 border-green-200 border-t-green-500 rounded-full animate-spin"></div>
+              </div>
+            )}
           </div>
         )}
 
-        {/* [VIEW 2] 상세 정보 화면 (selectedEvent가 있을 때) */}
+        {/* [VIEW 2] 상세 정보 화면 (selectedEvent가 있을 때) - 기존 코드 유지 */}
         {selectedEvent && (
           <div className="animate-slide-up">
             {/* 뒤로가기 버튼 */}
@@ -551,7 +623,7 @@ export const EventInfoPage = () => {
       </main>
 
       {/* ---------------------------------------------------------------------- */}
-      {/* Modals (상세 화면에서만 동작하지만 구조상 여기에 위치) */}
+      {/* Modals (기존과 동일) */}
       {/* ---------------------------------------------------------------------- */}
 
       {/* 1. 참여 Modal */}
@@ -596,7 +668,7 @@ export const EventInfoPage = () => {
                   </button>
                 </div>
                 <p className="mt-2 text-xs text-gray-400 px-1">
-                  * 참여한 포인트는 반환되지 않습니다.
+                  * 당첨되지 않은 포인트는 반환됩니다.
                 </p>
               </div>
               <div className="flex gap-3 pt-2">

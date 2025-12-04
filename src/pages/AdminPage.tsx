@@ -1,11 +1,11 @@
-import { type FormEvent, useState, useEffect } from 'react';
+import { type FormEvent, useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAxios } from '../hooks/useAxios';
 import { useAuth } from '../context/AuthContext';
 import { adminItemOptions } from '../data/admin';
 
 // ----------------------------------------------------------------------
-// 1. 타입 정의
+// 1. 타입 정의 (Page 구조 반영)
 // ----------------------------------------------------------------------
 interface Item {
   id: string;
@@ -33,6 +33,19 @@ interface EventStats {
   totalParticipants: number;
 }
 
+// [UPDATED] 공통 Page 인터페이스
+interface Page<T> {
+  content: T[];
+  last: boolean;
+  totalElements: number;
+  totalPages: number;
+  size: number;
+  number: number;
+  first: boolean;
+  numberOfElements: number;
+  empty: boolean;
+}
+
 interface SingleEvent {
   eventId: number;
   giftName: string;
@@ -41,6 +54,11 @@ interface SingleEvent {
   period: EventPeriod;
   stats: EventStats;
   winner?: string | null;
+}
+
+// [UPDATED] 전체 응답 구조 (List -> Page)
+interface EventResponse {
+  events: Page<SingleEvent>;
 }
 
 // ----------------------------------------------------------------------
@@ -274,7 +292,6 @@ const AddEventForm = () => {
     }
   };
 
-  // 공통 Input 스타일
   const inputClassName =
     'w-full rounded-2xl border border-gray-200 px-4 py-3.5 text-sm text-gray-800 shadow-sm focus:border-green-500 focus:outline-none focus:ring-4 focus:ring-green-50 transition-all placeholder:text-gray-400';
   const labelClassName = 'block text-sm font-bold text-gray-700 mb-2 px-1';
@@ -383,48 +400,92 @@ const AddEventForm = () => {
 };
 
 // ----------------------------------------------------------------------
-// 5. [UPDATED] 당첨자 추첨 폼 컴포넌트
+// 5. [UPDATED] 당첨자 추첨 폼 컴포넌트 (무한 스크롤 적용)
 // ----------------------------------------------------------------------
 const DrawWinnerForm = () => {
   const axios = useAxios();
-  // State 타입을 SingleEvent[]로 변경
+
+  // [UPDATED] 상태 관리: 데이터 누적 및 페이징 상태
   const [events, setEvents] = useState<SingleEvent[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [page, setPage] = useState<number>(0);
+  const [hasNext, setHasNext] = useState<boolean>(true);
+  const [isFetching, setIsFetching] = useState<boolean>(false);
+
   const [drawingId, setDrawingId] = useState<number | null>(null);
 
-  // 행사 목록 불러오기 로직 수정
-  const fetchEvents = async () => {
-    setIsLoading(true);
-    try {
-      const response = await axios.get('/event/all');
+  // 무한 스크롤 Observer Ref
+  const observerRef = useRef<IntersectionObserver | null>(null);
 
-      // [변경 포인트]
-      // Java의 record EventResponse(List<SingleEventResponse> events) 구조에 맞춤
-      // response.data (또는 body) 자체가 { events: [...] } 형태임
-      const responseData = response.data.body || response.data;
+  // [UPDATED] 행사 목록 조회 함수 (페이지 기반)
+  const fetchEvents = useCallback(
+    async (pageNum: number) => {
+      // 더 이상 페이지가 없거나 이미 로딩 중이면 중단 (첫 페이지가 아닐 때만)
+      if (!hasNext && pageNum > 0) return;
 
-      // data 내부의 .events 리스트를 가져와야 함. 없으면 빈 배열
-      const eventList = responseData.events || [];
+      setIsFetching(true);
+      try {
+        const response = await axios.get<EventResponse>('/event/all', {
+          params: {
+            page: pageNum,
+            size: 10,
+            // sort: 'id,DESC' // 백엔드 기본 설정이 되어 있다면 생략 가능
+          },
+        });
 
-      // 최신순 정렬 (ID 내림차순)
-      const sortedList = Array.isArray(eventList)
-        ? eventList.sort((a: SingleEvent, b: SingleEvent) => b.eventId - a.eventId)
-        : [];
+        // 응답 구조 확인: response.data가 EventResponse(events: Page<SingleEvent>) 임
+        const responseData = response.data.body || response.data;
+        const pageData = responseData.events;
 
-      setEvents(sortedList);
-    } catch (error: any) {
-      console.error('Failed to fetch events:', error);
-      alert('행사 목록을 불러오는데 실패했습니다.');
-    } finally {
-      setIsLoading(false);
-    }
+        setEvents((prev) => {
+          // 첫 페이지면 덮어쓰기, 아니면 이어붙이기
+          if (pageNum === 0) return pageData.content;
+          return [...prev, ...pageData.content];
+        });
+
+        setHasNext(!pageData.last);
+      } catch (error: any) {
+        console.error('Failed to fetch events:', error);
+        // 에러 발생 시 알림은 첫 페이지 로드 시에만 띄우거나, 조용히 실패 처리
+        if (pageNum === 0) alert('행사 목록을 불러오는데 실패했습니다.');
+      } finally {
+        setIsFetching(false);
+      }
+    },
+    [axios, hasNext]
+  );
+
+  // [UPDATED] page 상태 변경 시 데이터 요청
+  useEffect(() => {
+    fetchEvents(page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
+
+  // [UPDATED] 새로고침 핸들러
+  const handleRefresh = () => {
+    setPage(0);
+    setHasNext(true);
+    setEvents([]); // 목록 비우고
+    fetchEvents(0); // 첫 페이지 다시 로드
   };
 
-  useEffect(() => {
-    fetchEvents();
-  }, [axios]);
+  // [UPDATED] 마지막 요소 감지용 Ref Callback
+  const lastEventRef = useCallback(
+    (node: HTMLDivElement) => {
+      if (isFetching) return;
+      if (observerRef.current) observerRef.current.disconnect();
 
-  // 개별 행사 추첨 핸들러 (타입 수정: EventResponse -> SingleEvent)
+      observerRef.current = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && hasNext) {
+          setPage((prevPage) => prevPage + 1);
+        }
+      });
+
+      if (node) observerRef.current.observe(node);
+    },
+    [isFetching, hasNext]
+  );
+
+  // 개별 행사 추첨 핸들러
   const handleDraw = async (targetEvent: SingleEvent) => {
     if (!window.confirm(`[${targetEvent.giftName}] 행사의 추첨을 진행하시겠습니까?`)) {
       return;
@@ -455,17 +516,6 @@ const DrawWinnerForm = () => {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    if (!dateString) return '-';
-    return new Date(dateString).toLocaleDateString('ko-KR', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
   return (
     <div className="rounded-[24px] bg-white p-8 shadow-sm border border-gray-100">
       <div className="flex items-center justify-between mb-8">
@@ -479,15 +529,15 @@ const DrawWinnerForm = () => {
           </div>
         </div>
         <button
-          onClick={fetchEvents}
+          onClick={handleRefresh}
           className="p-2 text-gray-400 hover:text-green-600 transition rounded-full hover:bg-green-50"
           title="새로고침"
         >
-          <i className="ri-refresh-line text-xl"></i>
+          <i className={`ri-refresh-line text-xl ${isFetching ? 'animate-spin' : ''}`}></i>
         </button>
       </div>
 
-      {isLoading && events.length === 0 ? (
+      {isFetching && events.length === 0 ? (
         <div className="text-center py-20 text-gray-400">
           <div className="w-10 h-10 border-4 border-green-200 border-t-green-500 rounded-full animate-spin mx-auto mb-4"></div>
           행사 목록을 불러오는 중입니다...
@@ -502,12 +552,15 @@ const DrawWinnerForm = () => {
         </div>
       ) : (
         <div className="space-y-8">
-          {events.map((event) => {
+          {events.map((event, index) => {
             const hasWinner = !!event.winner;
+            // [UPDATED] 마지막 요소에 ref 할당
+            const isLastElement = index === events.length - 1;
 
             return (
               <div
-                key={event.eventId}
+                key={`${event.eventId}-${index}`} // 중복 방지 키
+                ref={isLastElement ? lastEventRef : null}
                 className={`bg-white border rounded-[20px] p-6 shadow-sm transition-all hover:shadow-md ${
                   hasWinner ? 'border-green-200 bg-green-50/10' : 'border-gray-100'
                 }`}
@@ -559,7 +612,7 @@ const DrawWinnerForm = () => {
                         <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-100">
                           <p className="text-xs text-gray-400 font-medium mb-1">발표일</p>
                           <p className="font-bold text-gray-700 text-sm">
-                            {formatDate(event.period.announcementDate).split('오전')[0]}
+                            {new Date(event.period.announcementDate).toLocaleDateString()}
                           </p>
                         </div>
                       </div>
@@ -602,6 +655,13 @@ const DrawWinnerForm = () => {
               </div>
             );
           })}
+
+          {/* 하단 로딩 인디케이터 */}
+          {isFetching && events.length > 0 && (
+            <div className="flex justify-center py-4">
+              <div className="w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -672,7 +732,6 @@ export const AdminPage = () => {
     }
   };
 
-  // 탭 버튼 공통 스타일
   const getTabButtonClass = (isActive: boolean) =>
     `px-5 py-3 rounded-xl text-sm font-bold transition-all whitespace-nowrap flex items-center gap-2 ${
       isActive
@@ -684,7 +743,6 @@ export const AdminPage = () => {
     <div className="min-h-screen bg-[#F8F9FA] pb-20 font-sans">
       <AdminHeader />
       <main className="max-w-5xl mx-auto px-5 py-10 space-y-8">
-        {/* 탭 네비게이션 */}
         <div className="flex space-x-2 bg-gray-100/50 p-1.5 rounded-2xl w-fit overflow-x-auto border border-gray-200/50">
           <button
             onClick={() => handleTabChange('points')}
@@ -709,7 +767,6 @@ export const AdminPage = () => {
           </button>
         </div>
 
-        {/* 탭 컨텐츠 렌더링 */}
         <div className="animate-fade-in-up">
           {activeTab === 'points' && (
             <CreditPointsForm
