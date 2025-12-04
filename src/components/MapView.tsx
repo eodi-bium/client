@@ -30,19 +30,20 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<TmapMapInstance | null>(null);
 
-  // [변경 1] 마커 관리를 위한 Map 사용 (Key: 장소식별자, Value: 마커인스턴스)
-  // 기존 배열 대신 Map을 사용하여 특정 마커의 존재 여부를 빠르게 파악합니다.
   const markersMapRef = useRef<Map<string, TmapMarkerInstance>>(new Map());
 
   const myLocationMarkerRef = useRef<TmapMarkerInstance | null>(null);
-  const activeMarkerIdRef = useRef<string | null>(null); // Index 대신 ID(Key)로 관리
+  const activeMarkerIdRef = useRef<string | null>(null);
+
+  // [추가] 이벤트 중복 실행 방지 (모바일 터치 + 클릭 동시 발생 차단)
+  const lastActionTimeRef = useRef<number>(0);
 
   const resultRoutePolylineRef = useRef<TmapPolylineInstance | null>(null);
   const routePointsRef = useRef<RouteFeature[]>([]);
   const lastSpokenTextRef = useRef<string>('');
   const isArrivalProcessRef = useRef(false);
 
-  // [모바일 수정 1] 드래그 상태를 추적하여 터치 씹힘/오작동 방지
+  // 드래그 상태 추적
   const isMapDraggingRef = useRef(false);
 
   const [places, setPlaces] = useState<Place[]>([]);
@@ -63,15 +64,12 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
     selectedPlaceRef.current = selectedPlace;
   }, [selectedPlace]);
 
-  // [변경 2] 카테고리가 바뀌면 기존 마커들은 의미가 없으므로 싹 지워야 합니다.
   useEffect(() => {
     activeCategoryRef.current = activeCategory;
-    // 카테고리 변경 시 맵 초기화 (기존 마커들 제거)
     if (markersMapRef.current.size > 0) {
       markersMapRef.current.forEach((marker) => marker.setMap(null));
       markersMapRef.current.clear();
     }
-    // API 재호출을 유도하기 위해 places 비우기 (선택사항)
     setPlaces([]);
   }, [activeCategory]);
 
@@ -120,7 +118,6 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
       const data: ApiResponse = await response.json();
 
       if (data && data.singlePlaceResponses) {
-        // [중요] 여기서 setPlaces를 호출하면 아래 useEffect가 실행되어 Diffing 로직이 돕니다.
         setPlaces(data.singlePlaceResponses);
       } else {
         setPlaces([]);
@@ -135,10 +132,10 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
       const activeKey = activeMarkerIdRef.current;
       const marker = markersMapRef.current.get(activeKey);
       if (marker) {
-        marker.setMap(null); // 지도 화면에서 제거
-        markersMapRef.current.delete(activeKey); // 메모리(Map)에서 제거
+        marker.setMap(null);
+        markersMapRef.current.delete(activeKey);
       }
-      activeMarkerIdRef.current = null; // 활성 ID 초기화
+      activeMarkerIdRef.current = null;
     }
     setSelectedPlace(null);
     setRouteInfo(null);
@@ -242,7 +239,6 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
     }
   };
 
-  // Map 초기화 (최초 1회)
   useEffect(() => {
     const mapElement = mapContainerRef.current;
     if (!mapElement) return;
@@ -263,14 +259,12 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
           if (mapInstanceRef.current) fetchPlaces(mapInstanceRef.current);
         };
 
-        // [모바일 수정 2] 드래그 시작/종료 처리 및 클릭 방지 딜레이 적용
         map.addListener('dragstart', () => {
           isMapDraggingRef.current = true;
           setIsTracking(false);
         });
 
         map.addListener('dragend', () => {
-          // 손을 떼는 순간 클릭으로 인식되는 것을 막기 위해 0.2초 딜레이
           setTimeout(() => {
             isMapDraggingRef.current = false;
           }, 200);
@@ -288,7 +282,6 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
     };
   }, []);
 
-  // 리사이즈 핸들러
   useEffect(() => {
     const handleResize = () => {
       if (mapInstanceRef.current && mapContainerRef.current) {
@@ -302,7 +295,6 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // 나침반 모드 핸들러
   useEffect(() => {
     const handleOrientation = (event: DeviceOrientationEvent) => {
       if (!isCompassMode || !mapInstanceRef.current) return;
@@ -325,7 +317,6 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
     return () => window.removeEventListener('deviceorientation', handleOrientation);
   }, [isCompassMode]);
 
-  // 위치 추적 핸들러
   useEffect(() => {
     if (!navigator.geolocation) return;
     const watchId = navigator.geolocation.watchPosition(
@@ -356,7 +347,6 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
             mapInstanceRef.current.setCenter(myLatLng);
           }
 
-          // 경로 안내 로직
           if (routeInfo && selectedPlace && !isArrivalProcessRef.current) {
             const distToDest = getDistanceFromLatLonInMeters(
               lat,
@@ -412,7 +402,6 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
     }
   }, [activeCategory]);
 
-  // 내 위치 마커 아이콘 업데이트
   useEffect(() => {
     if (myLocationMarkerRef.current && mapInstanceRef.current && window.Tmapv2) {
       const myIcon = routeInfo ? MARKER_IMAGES.START : MARKER_IMAGES.MY_LOCATION;
@@ -420,24 +409,20 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
     }
   }, [routeInfo]);
 
-  // [핵심 변경 3] 마커 렌더링 최적화 로직 (Diffing Algorithm)
+  // [핵심 로직 개선]
   useEffect(() => {
     if (!mapInstanceRef.current || !window.Tmapv2) return;
 
-    // 1. 현재 보여줘야 할 장소 목록 결정
     let placesToRender = places;
     if (routeInfo && selectedPlace) {
       placesToRender = [selectedPlace];
     }
 
-    // 2. 장소 식별을 위한 키 생성 함수 (ID가 없으면 좌표로 대체)
     const getPlaceKey = (place: Place) =>
       place.id ? String(place.id) : `${place.latitude}-${place.longitude}`;
 
-    // 3. 현재 렌더링해야 할 모든 장소의 키 집합 생성
+    // 1. 화면에서 사라져야 할 마커 제거
     const newPlaceKeys = new Set(placesToRender.map(getPlaceKey));
-
-    // 4. [제거 단계] 더 이상 유효하지 않은(새 목록에 없는) 마커 제거
     markersMapRef.current.forEach((marker, key) => {
       if (!newPlaceKeys.has(key)) {
         marker.setMap(null);
@@ -445,7 +430,6 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
       }
     });
 
-    // 5. [추가/유지 단계] 마커 생성 및 관리
     let defaultIcon = MARKER_IMAGES.DEFAULT;
     if (activeCategory === 'battery') defaultIcon = MARKER_IMAGES.BATTERY;
     else if (activeCategory === 'light') defaultIcon = MARKER_IMAGES.LIGHT;
@@ -456,8 +440,15 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
       iconUrl = MARKER_IMAGES.END;
     }
 
-    // 마커 생성 함수
-    const createMarker = (place: Place, key: string, isBouncing: boolean) => {
+    // [중요] 마커 생성 및 등록 함수
+    // 이 함수 안에서 "기존 마커 제거 -> 새 마커 생성"을 원자적으로 처리합니다.
+    const createAndRegisterMarker = (place: Place, key: string, isBouncing: boolean) => {
+      // [Safety] 해당 키의 마커가 이미 있다면 무조건 제거 (중복 방지)
+      const existing = markersMapRef.current.get(key);
+      if (existing) {
+        existing.setMap(null);
+      }
+
       let aniType = routeInfo ? null : window.Tmapv2.MarkerOptions.ANIMATE_BALLOON;
       if (isBouncing) aniType = window.Tmapv2.MarkerOptions.ANIMATE_BOUNCE;
 
@@ -471,33 +462,36 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
         animationLength: 300,
       });
 
-      // [모바일 수정 3] 마커 동작 핸들러 분리 및 방어 코드 추가
-      const handleMarkerAction = () => {
-        // 지도가 드래그 중이라면 클릭 무시
+      // 맵(Ref)에 새 마커 등록
+      markersMapRef.current.set(key, marker);
+
+      // 핸들러 등록
+      const handleAction = () => {
+        // [Debounce] 0.3초 이내 중복 호출 방지 (모바일 터치+클릭)
+        const now = Date.now();
+        if (now - lastActionTimeRef.current < 300) return;
+        lastActionTimeRef.current = now;
+
         if (isMapDraggingRef.current) return;
         if (routeInfo) return;
 
-        // 이전에 활성화된 마커가 있다면 일반 상태로 복구 (지우고 다시 그림)
         const prevKey = activeMarkerIdRef.current;
+
+        // 1. 이전 마커 복구 (Static으로 교체)
+        // createAndRegisterMarker 함수가 "기존 바운싱 마커 제거"까지 알아서 수행함
         if (prevKey && prevKey !== key) {
-          const prevMarkerInstance = markersMapRef.current.get(prevKey);
-          if (prevMarkerInstance) {
-            // 기존 마커 정보 찾기 (places 배열에서)
-            const prevPlace = places.find((p) => getPlaceKey(p) === prevKey);
-            if (prevPlace) {
-              prevMarkerInstance.setMap(null);
-              const restoredMarker = createMarker(prevPlace, prevKey, false);
-              markersMapRef.current.set(prevKey, restoredMarker);
-            }
+          const prevPlace = places.find((p) => getPlaceKey(p) === prevKey);
+          if (prevPlace) {
+            createAndRegisterMarker(prevPlace, prevKey, false);
           }
         }
 
-        // 현재 클릭한 마커 바운싱 처리 (지우고 바운싱으로 다시 그림)
-        marker.setMap(null);
-        const bouncingMarker = createMarker(place, key, true);
-        markersMapRef.current.set(key, bouncingMarker);
+        // 2. 현재 마커 활성화 (Bouncing으로 교체)
+        createAndRegisterMarker(place, key, true);
+
         activeMarkerIdRef.current = key;
 
+        // 거리 계산 및 선택 상태 업데이트
         let distText = '';
         if (myLocationRef.current) {
           const d = getDistanceFromLatLonInMeters(
@@ -512,23 +506,19 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
         setIsTracking(false);
       };
 
-      // 클릭 이벤트 리스너 등록 (click + touchend 동시 지원)
-      marker.addListener('click', handleMarkerAction);
-      marker.addListener('touchend', handleMarkerAction);
+      // click과 touchend 동시 등록 (Debounce로 제어)
+      marker.addListener('click', handleAction);
+      marker.addListener('touchend', handleAction);
 
       return marker;
     };
 
-    // 6. 실제 순회하며 신규 마커 추가 (이미 있는 키는 건너뜀 = 최적화)
+    // 초기 렌더링 루프
     placesToRender.forEach((place) => {
       const key = getPlaceKey(place);
-
-      // [최적화 핵심] 이미 지도에 있는 마커라면 건드리지 않음
+      // 이미 맵에 존재하면 건드리지 않음 (효율성)
       if (!markersMapRef.current.has(key)) {
-        // 단, 현재 선택된 마커(바운싱 중인)라면 바운싱 상태로 그려야 할 수도 있음 (리렌더링 시)
-        // 하지만 여기 로직은 '새로 추가된 것'만 처리하므로 기본 상태로 그림
-        const newMarker = createMarker(place, key, false);
-        markersMapRef.current.set(key, newMarker);
+        createAndRegisterMarker(place, key, false);
       }
     });
   }, [places, activeCategory, routeInfo]);
@@ -550,7 +540,6 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
       <div
         ref={mapContainerRef}
         className="w-full h-full bg-gray-200"
-        // [모바일 수정 4] 브라우저 기본 터치 동작 제어 (필수)
         style={{ touchAction: 'none' }}
       />
 
@@ -563,8 +552,6 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
         className={`absolute bottom-6 right-4 z-40 bg-white p-3 rounded-full shadow-lg border transition-colors ${
           isTracking ? 'text-blue-500 border-blue-500' : 'text-gray-600 border-gray-200'
         }`}
-        // [모바일 수정 5] 조준경 위치 상향 조정 (모바일 하단 바 대응)
-        // 기본 80px -> 120px, 선택시 240px -> 280px 로 40px씩 올림
         style={{ bottom: selectedPlace ? '280px' : '120px' }}
       >
         <i
