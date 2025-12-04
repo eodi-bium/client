@@ -59,6 +59,9 @@ interface SingleEvent {
 // [UPDATED] 전체 응답 구조 (List -> Page)
 interface EventResponse {
   events: Page<SingleEvent>;
+  body?: {
+    events: Page<SingleEvent>;
+  };
 }
 
 // ----------------------------------------------------------------------
