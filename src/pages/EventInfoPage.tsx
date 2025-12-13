@@ -347,7 +347,7 @@ export const EventInfoPage = () => {
         },
       ];
 
-      let eventDetailsData: EventDetail[] = [
+      const eventDetailsData: EventDetail[] = [
         {
           id: 'count',
           label: '상품 수량',
@@ -719,7 +719,7 @@ export const EventInfoPage = () => {
                   <span className="text-green-600 font-bold text-lg">회원님</span>입니다! 🎉
                 </p>
                 <div className="bg-green-50 p-4 rounded-2xl border border-green-100 mb-6 text-xs text-green-700 font-medium">
-                  관리자에게 연락하여 상품 수령 방법을 안내받으세요.
+                  inhapj01@gmail.com로 연락해주세요.
                 </div>
               </div>
             ) : (
