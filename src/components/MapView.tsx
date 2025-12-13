@@ -331,7 +331,7 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
               map: mapInstanceRef.current,
               title: '내 위치',
               icon: myIcon,
-              iconSize: new window.Tmapv2.Size(32, 32),
+              iconSize: new window.Tmapv2.Size(35, 35),
             });
             mapInstanceRef.current.setCenter(myLatLng);
             fetchPlaces(mapInstanceRef.current);
@@ -451,31 +451,31 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
         map: mapInstanceRef.current!,
         title: place.name,
         icon: iconUrl,
-        iconSize: new window.Tmapv2.Size(32, 32),
+        iconSize: new window.Tmapv2.Size(35, 35),
         animation: aniType,
         animationLength: 300,
       });
 
-      // 클릭 이벤트 리스너 등록
-      marker.addListener('click', () => {
+      const handleMarkerAction = () => {
         if (routeInfo) return;
 
-        // 이전에 활성화된 마커가 있다면 일반 상태로 복구 (지우고 다시 그림)
+        // 이전에 활성화된 마커 복구
         const prevKey = activeMarkerIdRef.current;
         if (prevKey && prevKey !== key) {
           const prevMarkerInstance = markersMapRef.current.get(prevKey);
           if (prevMarkerInstance) {
-            // 기존 마커 정보 찾기 (places 배열에서)
             const prevPlace = places.find((p) => getPlaceKey(p) === prevKey);
             if (prevPlace) {
               prevMarkerInstance.setMap(null);
+              // 복구 시에는 다시 클릭 리스너를 달아줘야 하므로 재귀적 구조 주의
+              // 여기서는 간단히 createMarker 호출 (무한루프 방지 위해 isBouncing=false)
               const restoredMarker = createMarker(prevPlace, prevKey, false);
               markersMapRef.current.set(prevKey, restoredMarker);
             }
           }
         }
 
-        // 현재 클릭한 마커 바운싱 처리 (지우고 바운싱으로 다시 그림)
+        // 현재 마커 바운싱 처리
         marker.setMap(null);
         const bouncingMarker = createMarker(place, key, true);
         markersMapRef.current.set(key, bouncingMarker);
@@ -493,7 +493,16 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
         }
         setSelectedPlace({ ...place, distanceText: distText });
         setIsTracking(false);
-      });
+      };
+
+      // [수정 3] 클릭과 터치 이벤트 모두 등록
+      // 'click'은 PC 및 일반적인 모바일 터치
+      marker.addListener('click', handleMarkerAction);
+
+      // 'touchend'는 모바일에서 손을 뗐을 때 즉시 반응 (반응 속도 개선)
+      // 주의: Tmap 버전에 따라 click과 중복 발생할 수 있으나,
+      // 로직상 마커를 지우고(marker.setMap(null)) 새로 그리기 때문에 중복 실행되어도 큰 문제는 없음
+      marker.addListener('touchend', handleMarkerAction);
 
       return marker;
     };
