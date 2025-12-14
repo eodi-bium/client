@@ -729,7 +729,7 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
 
       <button
         onClick={handleCurrentLocationClick}
-        className={`absolute bottom-5 right-5 z-40 bg-white p-3 rounded-full shadow-lg border transition-colors ${
+        className={`absolute bottom-8 right-5 z-40 bg-white p-3 rounded-full shadow-lg border transition-colors ${
           isTracking ? 'text-blue-500 border-blue-500' : 'text-gray-600 border-gray-200'
         }`}
       >
