@@ -729,14 +729,9 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
 
       <button
         onClick={handleCurrentLocationClick}
-        className={`absolute bottom-6 right-4 z-40 bg-white p-3 rounded-full shadow-lg border transition-colors ${
+        className={`absolute bottom-5 right-5 z-40 bg-white p-3 rounded-full shadow-lg border transition-colors ${
           isTracking ? 'text-blue-500 border-blue-500' : 'text-gray-600 border-gray-200'
         }`}
-        style={{
-          bottom: selectedPlace
-            ? 'calc(280px + env(safe-area-inset-bottom))'
-            : 'calc(120px + env(safe-area-inset-bottom))',
-        }}
       >
         <i
           className={`fas fa-crosshairs text-xl ${isCompassMode ? 'animate-pulse text-red-500' : ''}`}
