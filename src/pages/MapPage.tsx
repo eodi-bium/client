@@ -28,9 +28,7 @@ export const MapPage = () => {
         </div>
       </div>
 
-      {/* 지도 영역 */}
-      {/* ★ [수정] pt-32 (약 128px) 만큼 띄우고, MapView가 나머지를 채우도록 설정 */}
-      <div className="w-full h-full pt-32 box-border">
+      <div className="w-full h-full pt-32 pb-16 box-border">
         <MapView activeCategory={activeCategory} />
       </div>
     </div>
