@@ -609,9 +609,12 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
     // 마커 생성 함수
 
     const createMarker = (place: Place, key: string, isBouncing: boolean) => {
-      let aniType = routeInfo ? null : window.Tmapv2.MarkerOptions.ANIMATE_BALLOON;
-
-      if (isBouncing) aniType = window.Tmapv2.MarkerOptions.ANIMATE_BOUNCE;
+      let aniType = window.Tmapv2.MarkerOptions.ANIMATE_BALLOON;
+      if (routeInfo) {
+        aniType = null;
+      } else if (isBouncing) {
+        aniType = window.Tmapv2.MarkerOptions.ANIMATE_BOUNCE;
+      }
 
       const marker = new window.Tmapv2.Marker({
         position: new window.Tmapv2.LatLng(place.latitude, place.longitude),
@@ -694,7 +697,10 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
 
     placesToRender.forEach((place) => {
       const key = getPlaceKey(place);
-
+      if (routeInfo && markersMapRef.current.has(key)) {
+        markersMapRef.current.get(key)?.setMap(null);
+        markersMapRef.current.delete(key);
+      }
       if (!markersMapRef.current.has(key)) {
         const newMarker = createMarker(place, key, false);
 
@@ -729,9 +735,14 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
 
       <button
         onClick={handleCurrentLocationClick}
-        className={`absolute bottom-8 right-5 z-40 bg-white p-3 rounded-full shadow-lg border transition-colors ${
+        className={`absolute bottom-6 right-4 z-40 bg-white p-3 rounded-full shadow-lg border transition-colors ${
           isTracking ? 'text-blue-500 border-blue-500' : 'text-gray-600 border-gray-200'
         }`}
+        style={{
+          bottom: selectedPlace
+            ? 'calc(280px + env(safe-area-inset-bottom))'
+            : 'calc(120px + env(safe-area-inset-bottom))',
+        }}
       >
         <i
           className={`fas fa-crosshairs text-xl ${isCompassMode ? 'animate-pulse text-red-500' : ''}`}
