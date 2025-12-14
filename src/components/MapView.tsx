@@ -55,6 +55,7 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
   const activeCategoryRef = useRef(activeCategory);
   const selectedPlaceRef = useRef<SelectedPlaceInfo | null>(null);
   const myLocationRef = useRef<{ lat: number; lng: number } | null>(null);
+  const prevLocationRef = useRef<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
     selectedPlaceRef.current = selectedPlace;
@@ -313,82 +314,102 @@ const MapView: React.FC<MapViewProps> = ({ activeCategory = 'battery' }) => {
   // 위치 추적 핸들러
   useEffect(() => {
     if (!navigator.geolocation) return;
-    const watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-        setMyLocation({ lat, lng });
 
-        if (mapInstanceRef.current && window.Tmapv2) {
-          const myLatLng = new window.Tmapv2.LatLng(lat, lng);
-          const myIcon = routeInfo ? MARKER_IMAGES.START : MARKER_IMAGES.MY_LOCATION;
+    const updateLocation = () => {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
 
-          if (myLocationMarkerRef.current) {
-            myLocationMarkerRef.current.setPosition(myLatLng);
-          } else {
-            myLocationMarkerRef.current = new window.Tmapv2.Marker({
-              position: myLatLng,
-              map: mapInstanceRef.current,
-              title: '내 위치',
-              icon: myIcon,
-              iconSize: new window.Tmapv2.Size(35, 35),
-            });
-            mapInstanceRef.current.setCenter(myLatLng);
-            fetchPlaces(mapInstanceRef.current);
-          }
-
-          if (isTracking) {
-            mapInstanceRef.current.setCenter(myLatLng);
-          }
-
-          // 경로 안내 로직
-          if (routeInfo && selectedPlace && !isArrivalProcessRef.current) {
-            const distToDest = getDistanceFromLatLonInMeters(
+          // 이전 위치와 거리 비교 (2m 미만이면 갱신 안 함)
+          if (prevLocationRef.current) {
+            const dist = getDistanceFromLatLonInMeters(
               lat,
               lng,
-              selectedPlace.latitude,
-              selectedPlace.longitude
+              prevLocationRef.current.lat,
+              prevLocationRef.current.lng
             );
+            if (dist < 2) return;
+          }
+          prevLocationRef.current = { lat, lng };
 
-            if (distToDest < 20) {
-              isArrivalProcessRef.current = true;
-              speak('목적지에 도착했습니다.');
-              setTimeout(() => {
-                const confirmed = window.confirm('목적지에 도착했습니다! 안내를 종료합니다.');
-                if (confirmed || !confirmed) {
-                  window.location.reload();
-                }
-              }, 500);
-              return;
+          setMyLocation({ lat, lng });
+
+          if (mapInstanceRef.current && window.Tmapv2) {
+            const myLatLng = new window.Tmapv2.LatLng(lat, lng);
+            const myIcon = routeInfo ? MARKER_IMAGES.START : MARKER_IMAGES.MY_LOCATION;
+
+            if (myLocationMarkerRef.current) {
+              myLocationMarkerRef.current.setPosition(myLatLng);
+            } else {
+              myLocationMarkerRef.current = new window.Tmapv2.Marker({
+                position: myLatLng,
+                map: mapInstanceRef.current,
+                title: '내 위치',
+                icon: myIcon,
+                iconSize: new window.Tmapv2.Size(35, 35),
+              });
+              mapInstanceRef.current.setCenter(myLatLng);
+              fetchPlaces(mapInstanceRef.current);
             }
 
-            let nearestPoint: RouteFeature | null = null;
-            let minDist = 100000;
-            routePointsRef.current.forEach((point) => {
-              const pCoord = point.geometry.coordinates as number[];
-              const d = getDistanceFromLatLonInMeters(lat, lng, pCoord[1], pCoord[0]);
-              if (d < 30 && d < minDist) {
-                minDist = d;
-                nearestPoint = point;
-              }
-            });
+            if (isTracking) {
+              mapInstanceRef.current.setCenter(myLatLng);
+            }
 
-            if (nearestPoint) {
-              const point = nearestPoint as RouteFeature;
-              const desc = point.properties.description;
-              if (tbtInstruction !== desc) {
-                setTbtInstruction(desc);
-                setTbtDistance('잠시 후');
-                speak(desc);
+            // 경로 안내 로직
+            if (routeInfo && selectedPlace && !isArrivalProcessRef.current) {
+              const distToDest = getDistanceFromLatLonInMeters(
+                lat,
+                lng,
+                selectedPlace.latitude,
+                selectedPlace.longitude
+              );
+
+              if (distToDest < 20) {
+                isArrivalProcessRef.current = true;
+                speak('목적지에 도착했습니다.');
+                setTimeout(() => {
+                  const confirmed = window.confirm('목적지에 도착했습니다! 안내를 종료합니다.');
+                  if (confirmed || !confirmed) {
+                    window.location.reload();
+                  }
+                }, 500);
+                return;
+              }
+
+              let nearestPoint: RouteFeature | null = null;
+              let minDist = 100000;
+              routePointsRef.current.forEach((point) => {
+                const pCoord = point.geometry.coordinates as number[];
+                const d = getDistanceFromLatLonInMeters(lat, lng, pCoord[1], pCoord[0]);
+                if (d < 30 && d < minDist) {
+                  minDist = d;
+                  nearestPoint = point;
+                }
+              });
+
+              if (nearestPoint) {
+                const point = nearestPoint as RouteFeature;
+                const desc = point.properties.description;
+                if (tbtInstruction !== desc) {
+                  setTbtInstruction(desc);
+                  setTbtDistance('잠시 후');
+                  speak(desc);
+                }
               }
             }
           }
-        }
-      },
-      (err) => console.error(err),
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
-    );
-    return () => navigator.geolocation.clearWatch(watchId);
+        },
+        (err) => console.error(err),
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
+      );
+    };
+
+    updateLocation();
+    const intervalId = setInterval(updateLocation, 1000);
+
+    return () => clearInterval(intervalId);
   }, [fetchPlaces, isTracking, routeInfo, selectedPlace, tbtInstruction]);
 
   useEffect(() => {
