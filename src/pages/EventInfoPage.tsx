@@ -112,6 +112,8 @@ export const EventInfoPage = () => {
   const axiosInstance = useAxios();
   const { isLoggedIn, isLoading, accessToken } = useAuth();
 
+  const supportEmail = 'inhapj01@gmail.com';
+
   // [UPDATED] 상태 관리: 데이터 누적 및 페이징 상태
   const [allEvents, setAllEvents] = useState<SingleEventResponse[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<SingleEventResponse | null>(null);
@@ -134,6 +136,9 @@ export const EventInfoPage = () => {
   const [betPoint, setBetPoint] = useState<string>('');
   const [currentPoint, setCurrentPoint] = useState<number>(0);
 
+  const [isEmailCopied, setIsEmailCopied] = useState(false);
+  const copyEmailTimeoutRef = useRef<number | null>(null);
+
   // 사용자 ID 추출
   useEffect(() => {
     if (accessToken) {
@@ -143,6 +148,12 @@ export const EventInfoPage = () => {
       setCurrentUserId('');
     }
   }, [accessToken]);
+
+  useEffect(() => {
+    return () => {
+      if (copyEmailTimeoutRef.current) window.clearTimeout(copyEmailTimeoutRef.current);
+    };
+  }, []);
 
   // [UPDATED] 이벤트 목록 조회 함수 (페이지 기반)
   const fetchEvents = useCallback(
@@ -254,6 +265,34 @@ export const EventInfoPage = () => {
     const apiUrl = import.meta.env.VITE_BASE_URL;
     window.location.href = `${apiUrl}/oauth2/authorization/kakao`;
   };
+
+  const handleCopySupportEmail = useCallback(async () => {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(supportEmail);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = supportEmail;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'fixed';
+        textarea.style.top = '0';
+        textarea.style.left = '0';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+
+      setIsEmailCopied(true);
+      if (copyEmailTimeoutRef.current) window.clearTimeout(copyEmailTimeoutRef.current);
+      copyEmailTimeoutRef.current = window.setTimeout(() => setIsEmailCopied(false), 1500);
+    } catch (error) {
+      console.error('Failed to copy support email:', error);
+      alert('복사에 실패했습니다. 이메일을 직접 복사해주세요.');
+    }
+  }, [supportEmail]);
 
   const handleCheckWinnerClick = () => {
     if (!isLoggedIn) {
@@ -719,7 +758,23 @@ export const EventInfoPage = () => {
                   <span className="text-green-600 font-bold text-lg">회원님</span>입니다! 🎉
                 </p>
                 <div className="bg-green-50 p-4 rounded-2xl border border-green-100 mb-6 text-xs text-green-700 font-medium">
-                  inhapj01@gmail.com로 연락해주세요.
+                  12월 19일까지<br/>
+                  <span className="inline-flex items-center gap-2">
+                    <span className="select-text cursor-text underline underline-offset-2">
+                      {supportEmail}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleCopySupportEmail}
+                      className="px-2 py-1 rounded-lg bg-green-100 text-green-700 font-bold hover:bg-green-200 transition-colors disabled:opacity-60 disabled:hover:bg-green-100"
+                      disabled={isEmailCopied}
+                      aria-label="이메일 주소 복사"
+                    >
+                      {isEmailCopied ? '복사됨' : '복사'}
+                    </button>
+                  </span>
+                  <br/>
+                  로 연락해주세요. 그 뒤에는 서버가 삭제되어 확인이 불가능합니다!!
                 </div>
               </div>
             ) : (
