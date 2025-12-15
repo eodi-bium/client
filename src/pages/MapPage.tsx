@@ -14,8 +14,8 @@ export const MapPage = () => {
   }));
 
   return (
-    // ★ [수정] h-screen과 overflow-hidden을 주어 전체 화면 고정
-    <div className="h-screen w-full bg-gray-50 overflow-hidden flex flex-col">
+    // ★ [수정] h-screen -> h-[100dvh]로 변경하여 모바일 브라우저 주소창 높이 대응
+    <div className="h-[100dvh] w-full bg-gray-50 overflow-hidden flex flex-col">
       <Header />
 
       <div className="fixed top-14 left-0 right-0 bg-gray-50 border-b border-gray-200 z-40">
