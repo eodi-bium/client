@@ -11,7 +11,7 @@ export const NavigationOverlay: React.FC<NavigationOverlayProps> = ({
   distanceToNext,
 }) => {
   return (
-    <div className="absolute top-4 left-4 right-4 z-50 animate-slide-down">
+    <div className="fixed top-14 left-4 right-4 z-50 animate-slide-down">
       <div className="bg-gray-900/90 backdrop-blur-sm text-white p-4 rounded-xl shadow-lg border-l-4 border-green-500">
         <div className="flex items-center gap-4">
           {/* 방향 아이콘 (단순화: 상황에 따라 이미지를 바꾸면 더 좋습니다) */}
